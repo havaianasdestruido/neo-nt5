@@ -2,6 +2,8 @@
 
 Windows NT is a proprietary graphical operating system produced by Microsoft, first released on July 27, 1993. It is a processor-independent, multi-processor, and multi-user operating system. This edition of Windows NT 5 is a member of the Microsoft Windows NT family, starting with Windows 2000 and ending with Windows Server 2003.
 
+For a map of the checked-in source, component-by-component explanations, build boundaries, and a complete tracked-directory inventory, see the [agent and contributor guide](agents/README.md). That guide also documents gaps in this checkout; it does not certify a full build.
+
 ## Pre-Installation Preparations
 
 1. Extract the source tree. In this guide, we will assume `C:\NT`.
