@@ -1,0 +1,5 @@
+# `loc/` — localization build entry point
+
+[`loc/dirs`](../../loc/dirs) selects [`bin`](../../loc/bin); [`loc/bin/dirs`](../../loc/bin/dirs) names language subdirectories (`ger`, `jpn`, `chs`, `cht`, `kor`, `ara`, `heb`, and others). **None of those child language folders is checked in under `loc/bin/` in this checkout.** [`loc/bin/project.mk`](../../loc/bin/project.mk) supplies international-build settings. [The catalog](../catalog/loc.md) lists the only two tracked directories here.
+
+Localization is still present elsewhere: loader language folders under [`base/boot`](../../base/boot), resource trees across components, [`tools/postbuildscripts`](../../tools/postbuildscripts) and `lcinf`/international build scripts. Do not infer that missing `loc/bin/<language>` directories mean all language resources are absent. Conversely, the mere presence of localizable resources does not establish a complete localized product build. See [build/release](../build-and-release.md#choice-points-to-check-for-every-change).

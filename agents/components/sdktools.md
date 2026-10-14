@@ -1,0 +1,22 @@
+# `sdktools/` — source for build, debug and diagnostic utilities
+
+`sdktools/` contains **hundreds of independent tool projects** (the `build.exe` source is one of them). It is not a single library or runtime OS layer. [`sdktools/dirs`](../../sdktools/dirs) chooses many tools and architecture variants; other checked-in tool folders may be outside that traversal. The [sdktools catalog](../catalog/sdktools.md) gives an entry for **every nested directory**, including each tool's `sources`, declared target and direct file count. Use that index rather than interpreting a cryptic command name as a feature description. Build-environment scripts and tool payloads live separately in [`tools/`](tools.md).
+
+| Tool family and representative paths | What it helps with |
+| --- | --- |
+| [`build`](../../sdktools/build), [`nmake`](../../sdktools/nmake), [`buildnum`](../../sdktools/buildnum), [`objdir`](../../sdktools/objdir) | Build traversal, make execution, version/object-directory helpers. `build/build.htm` documents the historical build macros. |
+| [`masm`](../../sdktools/masm), [`rc`](../../sdktools/rc), [`mc`](../../sdktools/mc), [`m4`](../../sdktools/m4), [`asn1`](../../sdktools/asn1) | Assembly/resource/message/macro/data generation and compiler tooling. |
+| [`debuggers`](../../sdktools/debuggers), [`gflags`](../../sdktools/gflags), [`depends`](../../sdktools/depends), [`winobj`](../../sdktools/winobj), [`trace`](../../sdktools/trace) | Debuggers, process/image/object inspection and tracing. |
+| [`verifier`](../../sdktools/verifier), [`avrf`](../../sdktools/avrf), [`appverif`](../../sdktools/appverif), [`pageheap`](../../sdktools/pageheap), [`ioverify`](../../sdktools/ioverify) | Fault injection, driver/application verification and memory/I/O validation. |
+| [`pstat`](../../sdktools/pstat), [`tlist`](../../sdktools/tlist), [`pview`](../../sdktools/pview), [`procmon`](../../sdktools/procmon), [`perfmon`](../../sdktools/perfmon), [`pfmon`](../../sdktools/pfmon) | Process, thread and performance inspection/profiling. |
+| [`diskmon`](../../sdktools/diskmon), [`diskperf`](../../sdktools/diskperf), [`fsdump`](../../sdktools/fsdump), [`dskdump`](../../sdktools/dskdump), [`du`](../../sdktools/du) | Filesystem/disk monitoring and analysis. |
+| [`regdiff`](../../sdktools/regdiff), [`regini`](../../sdktools/regini), [`secedit`](../../sdktools/secedit), [`cacls`](../../sdktools/cacls), [`takeown`](../../sdktools/takeown) | Registry/security configuration and permissions. |
+| [`netjoin`](../../sdktools/netjoin), [`rasdiag`](../../sdktools/rasdiag), [`ethstat`](../../sdktools/ethstat), [`ramdiskctrl`](../../sdktools/ramdiskctrl) | Network/remote-access and system-device diagnostics. |
+| [`infgen`](../../sdktools/infgen), [`setuplog`](../../sdktools/setuplog), [`supporttools`](../../sdktools/supporttools), [`sfp`](../../sdktools/sfp) | Setup, support/diagnostic packages and system-file protection tooling. |
+| [`diff`](../../sdktools/diff), [`windiff`](../../sdktools/windiff), [`strings`](../../sdktools/strings), [`head`](../../sdktools/head), [`tail`](../../sdktools/tail), [`qgrep`](../../sdktools/qgrep), [`where`](../../sdktools/where) | File/text investigation; many other `sdktools/` directories are similarly focused one-command utilities. |
+| [`appcompat`](../../sdktools/appcompat), [`loc`](../../sdktools/loc), [`ia64`](../../sdktools/ia64), [`unicows`](../../sdktools/unicows) | Compatibility, localization and architecture-specific toolsets. |
+| [`vmtests`](../../sdktools/vmtests), [`buggy`](../../sdktools/buggy), [`leakyapp`](../../sdktools/leakyapp), [`crash`](../../sdktools/crash) | Test workloads and deliberate fault/repro applications; **do not** run indiscriminately. |
+
+## How to use the full inventory
+
+Search [`../catalog/sdktools.md`](../catalog/sdktools.md) for a command name, inspect its leaf `sources` to learn actual `TARGETNAME`, `TARGETTYPE`, dependencies and platform qualifiers, then check `sdktools/dirs` for reachability. A parent with a `dirs` file can contain several distinct programs. Unfamiliar names such as `z`, `suck` or `ync` are deliberately **not assigned invented purposes** here; the linked source is authoritative. This checkout's `sdktools/dirs` references some nonexistent children (e.g. `logger` and `oletools`), while other checked-in folders are not listed in that traversal. A tool's existence or name does not imply it is installed in the product image.
