@@ -1,3 +1,6 @@
+#ifndef NEONT_BRANDING
+#define NEONT_BRANDING 1
+#endif
 /*****************************************************************/
 /**                  Microsoft LAN Manager                      **/
 /**            Copyright(c) Microsoft Corp., 1991               **/
@@ -65,7 +68,11 @@ STYLE DS_MODALFRAME | WS_CAPTION | WS_POPUP | WS_SYSMENU
 FONT 8, "MS Shell Dlg"
 BEGIN
   CONTROL "Error", IDD_IW_REASON, "static", SS_NOPREFIX | SS_LEFT | WS_CHILD, 10, 10, 230, 43
+#if NEONT_BRANDING
+  CONTROL "NEONT driver cannot be loaded.", IDD_TEXT, "static", SS_LEFT | WS_CHILD, 10, 45, 230, 13
+#else
   CONTROL "Microsoft Windows NT driver cannot be loaded.", IDD_TEXT, "static", SS_LEFT | WS_CHILD, 10, 45, 230, 13
+#endif
   CHECKBOX "&Don't display warnings in the future",  IDCB_IW_SUPP_WARNINGS,  10, 65, 200, 13, BS_AUTOCHECKBOX
   CONTROL "OK", IDOK,          "button", BS_DEFPUSHBUTTON | WS_TABSTOP | WS_CHILD, 103, 85, 40, 14
 END

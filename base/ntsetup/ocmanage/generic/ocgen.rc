@@ -1,3 +1,6 @@
+#ifndef NEONT_BRANDING
+#define NEONT_BRANDING 1
+#endif
 #include "windows.h"
 #include <ntverp.h>
 #include "commctrl.h"
@@ -50,7 +53,11 @@
 
 STRINGTABLE DISCARDABLE
 BEGIN
+#if NEONT_BRANDING
+    IDS_DIALOG_CAPTION              "NEONT Setup"
+#else
     IDS_DIALOG_CAPTION              "Microsoft Windows NT Setup"
+#endif
 END
 
 

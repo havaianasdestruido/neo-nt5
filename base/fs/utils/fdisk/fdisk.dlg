@@ -1,3 +1,6 @@
+#ifndef NEONT_BRANDING
+#define NEONT_BRANDING 1
+#endif
 // 'about' dialog box
 
 IDD_ABOUT DIALOG LOADONCALL MOVEABLE DISCARDABLE 25,23,184,78
@@ -5,7 +8,11 @@ FONT 8,"MS Shell Dlg"
 CAPTION "About Disk Administrator"
 STYLE WS_BORDER | DS_MODALFRAME | WS_CAPTION | WS_DLGFRAME | WS_POPUP | WS_SYSMENU
 BEGIN
-    CONTROL "Microsoft Windows NT",-1,"static",SS_CENTER | WS_GROUP | WS_CHILD,0,5 ,184,8
+    #if NEONT_BRANDING
+    CONTROL "NEONT"
+#else
+    CONTROL "Microsoft Windows NT"
+#endif,-1,"static",SS_CENTER | WS_GROUP | WS_CHILD,0,5 ,184,8
     CONTROL "Disk Administrator",-1,"static",SS_CENTER | WS_GROUP | WS_CHILD,0,15,184,8
     CONTROL "Version VERSION"     ,-1,"Static",SS_CENTER | WS_GROUP | WS_CHILD,0,34,184,8
     CONTROL "Copyright \251 1991 Microsoft Corp.",-1,"static",SS_CENTER | WS_GROUP | WS_CHILD,0,47,184,9

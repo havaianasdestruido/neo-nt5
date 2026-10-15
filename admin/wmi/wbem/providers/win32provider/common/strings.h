@@ -17,6 +17,10 @@
 #ifndef _STRINGS_H_INC_
 #define _STRINGS_H_INC_
 
+#ifndef NEONT_BRANDING
+#define NEONT_BRANDING 1
+#endif
+
 // general messages and strings
 //=============================
 /*
@@ -258,10 +262,17 @@
 #define PROCESSOR_REVISION_STRING      L"Revision"
 #define PROCESSOR_PASS_STRING          L"Pass"
 
+#if NEONT_BRANDING
+#define OS_NT_ADV_SRVR                                  L"NEONT Advanced Server"
+#define OS_NT_SRV                                               L"NEONT Server"
+#define OS_NT_WKS                                               L"NEONT Workstation"
+#define OS_NT                                                   L"NEONT"
+#else
 #define OS_NT_ADV_SRVR                                  L"Microsoft Windows NT Advanced Server"
 #define OS_NT_SRV                                               L"Microsoft Windows NT Server"
 #define OS_NT_WKS                                               L"Microsoft Windows NT Workstation"
 #define OS_NT                                                   L"Microsoft Windows NT"
+#endif
 #define OS_95                                                   L"Microsoft Windows 95"
 
 #define MICROSOFT_COMPANY                               L"Microsoft"

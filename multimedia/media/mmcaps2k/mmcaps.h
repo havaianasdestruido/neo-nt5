@@ -40,6 +40,10 @@
 //
 //- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - ;
 
+#ifndef NEONT_BRANDING
+#define NEONT_BRANDING 1
+#endif
+
 #define APP_VERSION_MAJOR	    4
 #define APP_VERSION_MINOR           0
 #define APP_VERSION_BUILD           0
@@ -59,16 +63,16 @@
 
 #ifdef WIN32
 #if (defined(_X86_)) || (defined(i386))
-#define APP_VERSION_PRODUCTNAME_RC  "Microsoft Windows NT (i386)\0"
+#define APP_VERSION_PRODUCTNAME_RC  "NEONT (i386)\0"
 #endif
 #if (defined(_MIPS_)) || (defined(MIPS))
-#define APP_VERSION_PRODUCTNAME_RC  "Microsoft Windows NT (MIPS)\0"
+#define APP_VERSION_PRODUCTNAME_RC  "NEONT (MIPS)\0"
 #endif
 #if (defined(_ALPHA_)) || (defined(ALPHA))
-#define APP_VERSION_PRODUCTNAME_RC  "Microsoft Windows NT (Alpha)\0"
+#define APP_VERSION_PRODUCTNAME_RC  "NEONT (Alpha)\0"
 #endif
 #ifndef APP_VERSION_PRODUCTNAME_RC
-#define APP_VERSION_PRODUCTNAME_RC  "Microsoft Windows NT\0"
+#define APP_VERSION_PRODUCTNAME_RC  "NEONT\0"
 #endif
 #else
 #define APP_VERSION_PRODUCTNAME_RC  "Microsoft Windows\0"

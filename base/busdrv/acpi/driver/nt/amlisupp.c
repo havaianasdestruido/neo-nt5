@@ -22,9 +22,17 @@ Environment:
 --*/
 
 #include "pch.h"
+
+#ifndef NEONT_BRANDING
+#define NEONT_BRANDING 1
+#endif
 
 
+#if NEONT_BRANDING
+PSZ gpszOSName = "NEONT";
+#else
 PSZ gpszOSName = "Microsoft Windows NT";
+#endif
 
 
 #ifdef ALLOC_PRAGMA
