@@ -36,6 +36,10 @@ Revision History:
 
 #include "sfcfiles.h"
 
+#ifndef NEONT_BRANDING
+#define NEONT_BRANDING 1
+#endif
+
 void
 SmpDisplayString( char *s );
 
@@ -1519,15 +1523,63 @@ SmpCreateDynamicEnvironmentVariables(
         return Status;
         }
 
-    RtlInitUnicodeString( &ValueName, L"OS" );
-    ValueData = L"Windows_NT";
-    Status = NtSetValueKey( Key,
-                            &ValueName,
-                            0,
-                            REG_SZ,
-                            ValueData,
-                            (wcslen( ValueData ) + 1) * sizeof( WCHAR )
-                          );
+    //
+    // Software toggle: if a "Branding" value exists in this key, use it as the
+    // system-wide OS name; otherwise fall back to the build-time default.
+    //
+    {
+        UNICODE_STRING BrandingValueName;
+        KEY_VALUE_PARTIAL_INFORMATION *BrandingInfo = NULL;
+        ULONG BrandingInfoSize = 0;
+        ULONG BrandingResultSize = 0;
+        NTSTATUS BrandingStatus;
+
+        RtlInitUnicodeString( &BrandingValueName, L"Branding" );
+        BrandingStatus = NtQueryValueKey( Key,
+                                         &BrandingValueName,
+                                         KeyValuePartialInformation,
+                                         NULL,
+                                         0,
+                                         &BrandingResultSize );
+        if (BrandingStatus == STATUS_BUFFER_TOO_SMALL || BrandingStatus == STATUS_BUFFER_OVERFLOW) {
+            BrandingInfo = (KEY_VALUE_PARTIAL_INFORMATION *)RtlAllocateHeap( RtlProcessHeap(), 0, BrandingResultSize );
+            if (BrandingInfo != NULL) {
+                BrandingStatus = NtQueryValueKey( Key,
+                                                 &BrandingValueName,
+                                                 KeyValuePartialInformation,
+                                                 BrandingInfo,
+                                                 BrandingResultSize,
+                                                 &BrandingResultSize );
+                if (NT_SUCCESS( BrandingStatus ) && BrandingInfo->Type == REG_SZ &&
+                    BrandingInfo->DataLength >= sizeof( WCHAR )) {
+                    ValueData = (PWSTR)BrandingInfo->Data;
+                } else {
+                    ValueData = NULL;
+                }
+            }
+        }
+
+        if (ValueData == NULL) {
+#if NEONT_BRANDING
+            ValueData = L"NEONT";
+#else
+            ValueData = L"Windows_NT";
+#endif
+        }
+
+        RtlInitUnicodeString( &ValueName, L"OS" );
+        Status = NtSetValueKey( Key,
+                                &ValueName,
+                                0,
+                                REG_SZ,
+                                ValueData,
+                                (wcslen( ValueData ) + 1) * sizeof( WCHAR )
+                              );
+
+        if (BrandingInfo != NULL) {
+            RtlFreeHeap( RtlProcessHeap(), 0, BrandingInfo );
+        }
+    }
     if (!NT_SUCCESS( Status )) {
         KdPrintEx((DPFLTR_SMSS_ID,
                    DPFLTR_WARNING_LEVEL,

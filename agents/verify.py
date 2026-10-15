@@ -2,7 +2,7 @@
 """Validate agent-doc navigation and top-level guide coverage (standard library only).
 
 Run separately from generate_catalog.py --check: this checks the *written* Markdown,
-not the source inventory generation logic. It does not build or execute NT sources.
+not the source inventory generation logic. It does not build or execute NEONT sources.
 """
 
 from __future__ import annotations

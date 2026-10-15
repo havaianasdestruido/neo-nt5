@@ -181,10 +181,20 @@ BEGIN
     IDR_W2k_AdvancedServer  "Microsoft Windows 2000 Advanced Server"
     IDR_W2k_Server          "Microsoft Windows 2000 Server"
     IDR_W2k_Professional    "Microsoft Windows 2000 Professional"
+#ifndef NEONT_BRANDING
+#define NEONT_BRANDING 1
+#endif
+#if NEONT_BRANDING
+    IDR_NT_StockName        "NEONT"
+    IDR_NT_EnterpriseServer "NEONT Enterprise Server"
+    IDR_NT_Server           "NEONT Server"
+    IDR_NT_Workstation      "NEONT Workstation"
+#else
     IDR_NT_StockName        "Microsoft Windows NT"
     IDR_NT_EnterpriseServer "Microsoft Windows NT Enterprise Server"
     IDR_NT_Server           "Microsoft Windows NT Server"
     IDR_NT_Workstation      "Microsoft Windows NT Workstation"
+#endif
     IDR_9x_StockName        "Microsoft Windows"
     IDR_JOB_STATUS_PAUSED   "Paused"
     IDR_JOB_STATUS_ERROR    "Error"

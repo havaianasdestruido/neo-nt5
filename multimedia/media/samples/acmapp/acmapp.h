@@ -20,6 +20,10 @@
 //==========================================================================;
 
 #ifndef _INC_ACMAPP
+#ifndef NEONT_BRANDING
+#define NEONT_BRANDING 1
+#endif
+
 #define _INC_ACMAPP                 // #defined if file has been included
 
 #ifndef RC_INVOKED
@@ -72,19 +76,19 @@ extern "C"                          // assume C declarations for C++
 
 #ifdef WIN32
 #if (defined(_X86_)) || (defined(i386))
-#define APP_VERSION_PRODUCTNAME_RC  "Microsoft Windows NT Sample Application (i386)\0"
+#define APP_VERSION_PRODUCTNAME_RC  "NEONT Sample Application (i386)\0"
 #endif
 #if (defined(_MIPS_)) || (defined(MIPS))
-#define APP_VERSION_PRODUCTNAME_RC  "Microsoft Windows NT Sample Application (MIPS)\0"
+#define APP_VERSION_PRODUCTNAME_RC  "NEONT Sample Application (MIPS)\0"
 #endif
 #if (defined(_ALPHA_)) || (defined(ALPHA))
-#define APP_VERSION_PRODUCTNAME_RC  "Microsoft Windows NT Sample Application (Alpha)\0"
+#define APP_VERSION_PRODUCTNAME_RC  "NEONT Sample Application (Alpha)\0"
 #endif
 #if (defined(_PPC_)) || (defined(PPC))
-#define APP_VERSION_PRODUCTNAME_RC  "Microsoft Windows NT Sample Application (PowerPC)\0"
+#define APP_VERSION_PRODUCTNAME_RC  "NEONT Sample Application (PowerPC)\0"
 #endif
 #ifndef APP_VERSION_PRODUCTNAME_RC
-#define APP_VERSION_PRODUCTNAME_RC  "Microsoft Windows NT Sample Application\0"
+#define APP_VERSION_PRODUCTNAME_RC  "NEONT Sample Application\0"
 #endif
 #else
 #define APP_VERSION_PRODUCTNAME_RC  "Microsoft Windows Sample Application\0"

@@ -22,7 +22,7 @@ This repository is a historical Windows source tree with many unrelated targets.
 | Environment | Appropriate evidence |
 | --- | --- |
 | Any platform | `git diff --check`; review changed paths; compare build target/consumer declarations; run applicable text/static tests. For this documentation: `python3 agents/generate_catalog.py --check` and `python3 agents/verify.py`. |
-| Windows with compatible NT build toolchain | Enter a fresh Razzle session, select explicit architecture/flavor, build the smallest reachable affected target and its dependents, inspect logs/symbols; run local unit/DRT tools if present. See [build/release](build-and-release.md). |
+| Windows with compatible NEONT build toolchain | Enter a fresh Razzle session, select explicit architecture/flavor, build the smallest reachable affected target and its dependents, inspect logs/symbols; run local unit/DRT tools if present. See [build/release](build-and-release.md). |
 | Installed test system / VM | Exercise actual behavior, setup/service registration, negative/security paths, resource cleanup, locales and 32/64-bit variants; test image/media only if all prerequisites are available and permitted. |
 
 There is **no** supported repo-wide `npm test` or Linux compile target. A grep result, successful catalog regeneration, or existence of a `sources` file is not a runtime test. Report tests run, environment, relevant failures and untested targets. Do not imply that this checkout produces installable images just because postbuild scripts exist.

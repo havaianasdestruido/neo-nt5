@@ -30,8 +30,8 @@
 #define VER_PRODUCTVERSION_DW       (0x04460000 | VER_PRODUCTBUILD)
 
 #else
-#define VER_PRODUCTBUILD            /* NT */     0984
-#define VER_PRODUCTBETA_STR         /* NT */     ""
+#define VER_PRODUCTBUILD            /* NEONT */     0984
+#define VER_PRODUCTBETA_STR         /* NEONT */     ""
 #define VER_PRODUCTVERSION_STR      "5.00.0984"
 #define VER_PRODUCTVERSION          5,00,VER_PRODUCTBUILD,VER_PRODUCTBUILD_QFE
 #define VER_PRODUCTVERSION_W        (0x0500)

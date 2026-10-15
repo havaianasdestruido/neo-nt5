@@ -25,6 +25,9 @@
 #define APPNAME "Generic"
 
 // Windows Header Files:
+#ifndef NEONT_BRANDING
+#define NEONT_BRANDING 1
+#endif
 #include <windows.h>
 
 // C RunTime Header Files
@@ -561,7 +564,11 @@ LRESULT CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 
          if (dwVersion < 0x80000000) {
             // Windows NT
+#if NEONT_BRANDING
+            wsprintf (szVersion, "NEONT %u.%u (Build: %u)",
+#else
             wsprintf (szVersion, "Microsoft Windows NT %u.%u (Build: %u)",
+#endif
                (DWORD)(LOBYTE(LOWORD(dwVersion))),
                (DWORD)(HIBYTE(LOWORD(dwVersion))),
                     (DWORD)(HIWORD(dwVersion)) );

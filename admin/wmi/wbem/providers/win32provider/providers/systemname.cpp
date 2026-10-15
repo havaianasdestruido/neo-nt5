@@ -10,6 +10,9 @@
 //
 //=================================================================
 
+#ifndef NEONT_BRANDING
+#define NEONT_BRANDING 1
+#endif
 #include "precomp.h"
 #include <cregcls.h>
 #include <lockwrap.h>
@@ -142,7 +145,11 @@ CHString CSystemName::GetKeyName(void)
 			}
 		}
 		else
-			chsName = _T("Microsoft Windows NT");
+#if NEONT_BRANDING
+		chsName = _T("NEONT");
+#else
+		chsName = _T("Microsoft Windows NT");
+#endif
 
 
 		/* now for the product type */

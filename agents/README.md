@@ -1,6 +1,6 @@
-# Agent's guide to this NT source tree
+# Agent's guide to this NEONT source tree
 
-This folder is a **map of the checked-in Windows NT 5.x codebase** for people and coding agents. It is not an implementation of autonomous agents, a replacement for the original build tools, or a claim that this checkout is a complete, buildable Windows distribution. Start with the [architecture](architecture.md), then the [build/release path](build-and-release.md); use the [component guides](#component-guides) to find an owner, and the [complete directory catalog](catalog/README.md) to locate a particular nested component.
+This folder is a **map of the checked-in NEONT 5.x codebase** for people and coding agents. It is not an implementation of autonomous agents, a replacement for the original build tools, or a claim that this checkout is a complete, buildable Windows distribution. Start with the [architecture](architecture.md), then the [build/release path](build-and-release.md); use the [component guides](#component-guides) to find an owner, and the [complete directory catalog](catalog/README.md) to locate a particular nested component.
 
 ## What “complete” means here
 
@@ -68,4 +68,4 @@ The guide names correspond to **all 21 top-level tracked trees**. Some areas (no
 
 ## Scope and provenance
 
-Paths and claims in these guides refer to the files in this repository, not to every released NT 5.x SKU. This checkout mixes XP/Server-related trees and contains version- and architecture-specific branches. For example, [`public/sdk/inc/ntverp.h`](../public/sdk/inc/ntverp.h) declares a 5.1/2600 version in this snapshot; the repository README's broader product description does not make every directory a Server 2003 component. The [repository README](../README.md) includes historic build instructions, but some named helpers are absent here. Do not publish embedded product keys, private certificates, or binaries as part of an agent's report. Respect the rights and licenses applicable to this proprietary source tree.
+Paths and claims in these guides refer to the files in this repository, not to every released NEONT 5.x SKU. This checkout mixes XP/Server-related trees and contains version- and architecture-specific branches. For example, [`public/sdk/inc/ntverp.h`](../public/sdk/inc/ntverp.h) declares a 5.1/2600 version in this snapshot; the repository README's broader product description does not make every directory a Server 2003 component. The [repository README](../README.md) includes historic build instructions, but some named helpers are absent here. Do not publish embedded product keys, private certificates, or binaries as part of an agent's report. Respect the rights and licenses applicable to this proprietary source tree.
