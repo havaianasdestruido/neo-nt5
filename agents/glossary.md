@@ -2,7 +2,7 @@
 
 | Term | Meaning in this tree |
 | --- | --- |
-| **NT 5.x** | Windows NT 5 family. This snapshot contains XP/Server-related code and version/architecture branches; it is not evidence that every released variant is checked in. |
+| **NEONT 5.x** | NEONT 5 family. This snapshot contains XP/Server-related code and version/architecture branches; it is not evidence that every released variant is checked in. |
 | **HAL** | Hardware Abstraction Layer, under [`base/hals`](../base/hals); bridges kernel and platform-specific hardware details. |
 | **NTOS / executive** | Kernel/executive sources under [`base/ntos`](../base/ntos): memory, process, I/O, object, security, cache, scheduler and related managers. |
 | **NTDLL / native API** | User-mode native-system interface under [`base/ntdll`](../base/ntdll); not itself the kernel. |

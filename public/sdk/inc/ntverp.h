@@ -23,7 +23,12 @@
 #pragma once
 #endif
 
-#define VER_PRODUCTBUILD            /* NT */   2600
+/* NEONT branding toggle: default enabled (NEONT). Define NEONT_BRANDING=0 for official branding. */
+#ifndef NEONT_BRANDING
+#define NEONT_BRANDING 1
+#endif
+
+#define VER_PRODUCTBUILD            /* NEONT */   2600
 #define VER_PRODUCTBUILD_QFE        1106
 
 #ifndef NO_RC_VERSION
@@ -39,7 +44,7 @@
 #define VER_PRODUCTMAJORVERSION     5
 #define VER_PRODUCTMINORVERSION     1
 
-#define VER_PRODUCTBETA_STR         /* NT */     ""
+#define VER_PRODUCTBETA_STR         /* NEONT */     ""
 
 #define VER_PRODUCTVERSION_MAJORMINOR2(x,y) #x "." #y
 #define VER_PRODUCTVERSION_MAJORMINOR1(x,y) VER_PRODUCTVERSION_MAJORMINOR2(x, y)
