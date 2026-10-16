@@ -687,7 +687,8 @@ CGetSessionKeys(
         NT_OWF_PASSWORD ntowf;
         ANSI_STRING     ansi;
 
-        memset( pUserKey, '\0', sizeof(pUserKey) );
+        /* Zero full USER_SESSION_KEY structure (16 bytes), not just pointer-sized bytes */
+        memset( pUserKey, '\0', sizeof(*pUserKey) );
 
         /* NT_PASSWORD is really a UNICODE_STRING, so we need to convert our
         ** ANSI password.
