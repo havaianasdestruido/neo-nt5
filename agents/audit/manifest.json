@@ -1,0 +1,152 @@
+[
+  {
+    "id": "A01",
+    "title": "build: NEONT version-header comment breaks genbldno.pl",
+    "severity": "High",
+    "subsystem": "Build/versioning",
+    "file": "agents/audit/01-build-number.md",
+    "github_number": null,
+    "github_url": null,
+    "status": "blocked: Issues disabled"
+  },
+  {
+    "id": "A02",
+    "title": "build: fdisk.dlg loses CONTROL fields after #endif",
+    "severity": "Medium",
+    "subsystem": "Disk Administrator resources",
+    "file": "agents/audit/02-fdisk-resource.md",
+    "github_number": null,
+    "github_url": null,
+    "status": "blocked: Issues disabled"
+  },
+  {
+    "id": "A03",
+    "title": "bug: SMSS reads uninitialized ValueData when Branding is absent",
+    "severity": "High",
+    "subsystem": "Session Manager initialization",
+    "file": "agents/audit/03-smss-uninitialized.md",
+    "github_number": null,
+    "github_url": null,
+    "status": "blocked: Issues disabled"
+  },
+  {
+    "id": "A04",
+    "title": "security: SMSS calls wcslen on unvalidated registry REG_SZ data",
+    "severity": "High",
+    "subsystem": "Session Manager registry boundary",
+    "file": "agents/audit/04-smss-string.md",
+    "github_number": null,
+    "github_url": null,
+    "status": "blocked: Issues disabled"
+  },
+  {
+    "id": "A05",
+    "title": "bug: default OS=NEONT breaks existing Windows_NT batch branches",
+    "severity": "Medium",
+    "subsystem": "OS environment / tool compatibility",
+    "file": "agents/audit/05-os-environment.md",
+    "github_number": null,
+    "github_url": null,
+    "status": "blocked: Issues disabled"
+  },
+  {
+    "id": "A06",
+    "title": "bug: branding changes firmware-visible ACPI _OS identity",
+    "severity": "Medium",
+    "subsystem": "ACPI firmware compatibility",
+    "file": "agents/audit/06-acpi-os.md",
+    "github_number": null,
+    "github_url": null,
+    "status": "blocked: Issues disabled"
+  },
+  {
+    "id": "A07",
+    "title": "bug: multimedia product resources ignore NEONT_BRANDING=0",
+    "severity": "Low",
+    "subsystem": "Multimedia version resources",
+    "file": "agents/audit/07-media-toggle.md",
+    "github_number": null,
+    "github_url": null,
+    "status": "blocked: Issues disabled"
+  },
+  {
+    "id": "A08",
+    "title": "bug: UL Win9x samples initialize OVERLAPPED with a zero-length memset",
+    "severity": "Low",
+    "subsystem": "IIS UL Win9x test clients",
+    "file": "agents/audit/08-overlapped-zero.md",
+    "github_number": null,
+    "github_url": null,
+    "status": "blocked: Issues disabled"
+  },
+  {
+    "id": "A09",
+    "title": "bug: UL snd accepts message lengths beyond its stack buffer",
+    "severity": "Low",
+    "subsystem": "IIS UL Win9x snd test client",
+    "file": "agents/audit/09-snd-bounds.md",
+    "github_number": null,
+    "github_url": null,
+    "status": "blocked: Issues disabled"
+  },
+  {
+    "id": "A10",
+    "title": "bug: TLSDBLicenseAddEntry reports success after database insert fails",
+    "severity": "Medium",
+    "subsystem": "Terminal Services licensing database",
+    "file": "agents/audit/10-license-insert.md",
+    "github_number": null,
+    "github_url": null,
+    "status": "blocked: Issues disabled"
+  },
+  {
+    "id": "A11",
+    "title": "bug: WMI HTTP header query returns success and uninitialized data on failure",
+    "severity": "Medium",
+    "subsystem": "WMI XML HTTP transport",
+    "file": "agents/audit/11-http-header.md",
+    "github_number": null,
+    "github_url": null,
+    "status": "blocked: Issues disabled"
+  },
+  {
+    "id": "A12",
+    "title": "security: PPP CHAP user-session key zeroing clears only a pointer width",
+    "severity": "High",
+    "subsystem": "RRAS PPP CHAP session-key derivation",
+    "file": "agents/audit/12-chap-session-key.md",
+    "github_number": null,
+    "github_url": null,
+    "status": "blocked: Issues disabled"
+  },
+  {
+    "id": "A13",
+    "title": "bug: NetMeeting codec begin functions never set DecompressStarted/CompressStarted",
+    "severity": "Medium",
+    "subsystem": "NetMeeting audio/video codecs",
+    "file": "agents/audit/13-netmeeting-codec-flags.md",
+    "github_number": null,
+    "github_url": null,
+    "status": "blocked: Issues disabled"
+  },
+  {
+    "id": "A14",
+    "title": "docs: README documents unsupported CkhKernel razzle switch",
+    "severity": "Low",
+    "subsystem": "Build documentation",
+    "file": "agents/audit/14-docs-chkkernel.md",
+    "github_number": null,
+    "github_url": null,
+    "status": "blocked: Issues disabled"
+  },
+  {
+    "id": "A15",
+    "title": "security: README publishes product keys",
+    "severity": "Medium",
+    "subsystem": "Repository documentation",
+    "file": "agents/audit/15-security-readme-keys.md",
+    "github_number": null,
+    "github_url": null,
+    "status": "blocked: Issues disabled"
+  }
+]
