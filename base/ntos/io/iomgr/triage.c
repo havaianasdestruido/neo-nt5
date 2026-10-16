@@ -479,6 +479,65 @@ Environment:
     return DataTableEntry;
 }
 
+
+LOGICAL
+TriageHasLoaderChecksum (
+    IN PVOID TriageDumpBlock,
+    IN ULONG CheckSum
+    )
+
+/*++
+
+Routine Description:
+
+    Determines whether a triage dump contains a loader entry with the
+    specified checksum.  Validate the dump once, then scan its indexed
+    driver entries without repeating the dump-wide validation for each
+    entry.
+
+Arguments:
+
+    TriageDumpBlock - Supplies the triage dump to reference.
+
+    CheckSum - Supplies the checksum to find.
+
+Return Value:
+
+    TRUE if a matching loader entry is present; otherwise FALSE.
+
+Environment:
+
+    Kernel mode, APC_LEVEL or below.  Phase 0 only.
+
+--*/
+
+{
+    PTRIAGE_DUMP TriageDump;
+    PDUMP_DRIVER_ENTRY DriverList;
+    ULONG Index;
+
+    if (!TriagepVerifyDump (TriageDumpBlock)) {
+        return FALSE;
+    }
+
+    TriageDump = TriagepGetTriagePointer (TriageDumpBlock);
+
+    if (TriageDump->DriverCount == 0) {
+        return FALSE;
+    }
+
+    DriverList = (PDUMP_DRIVER_ENTRY)
+            IndexByByte (TriageDumpBlock, TriageDump->DriverListOffset);
+
+    for (Index = 0; Index < TriageDump->DriverCount; Index += 1) {
+        if (DriverList[Index].LdrEntry.CheckSum == CheckSum) {
+            return TRUE;
+        }
+    }
+
+    return FALSE;
+}
+
 
 PVOID
 TriageGetMmInformation(

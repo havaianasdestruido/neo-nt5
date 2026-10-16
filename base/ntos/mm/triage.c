@@ -124,6 +124,12 @@ TriageGetLoaderEntry (
     );
 
 LOGICAL
+TriageHasLoaderChecksum (
+    IN PVOID TriageDumpBlock,
+    IN ULONG CheckSum
+    );
+
+LOGICAL
 TriageActUpon(
     IN PVOID TriageDumpBlock
     );
@@ -289,21 +295,9 @@ Return Value:
                                            KLDR_DATA_TABLE_ENTRY,
                                            InLoadOrderLinks);
 
-        Matched = FALSE;
+        Matched = TriageHasLoaderChecksum (TriageDumpBlock,
+                                           DataTableEntry->CheckSum);
 
-        for (i = 0; i < ModuleCount; i += 1) {
-    
-            DumpTableEntry = TriageGetLoaderEntry (TriageDumpBlock, i);
-    
-            if (DumpTableEntry != NULL) {
-    
-                if (DataTableEntry->CheckSum == DumpTableEntry->CheckSum) {
-                    Matched = TRUE;
-                    break;
-                }
-            }
-        }
-    
         if (Matched == FALSE) {
             DbgPrint ("Matching checksum for module %wZ not found in triage dump\n",
                 &DataTableEntry->BaseDllName);
