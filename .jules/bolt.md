@@ -1,0 +1,3 @@
+## 2025-05-18 - Pathlib Object Overhead in Large Monorepos
+**Learning:** In codebases with hundreds of thousands of tracked files (e.g., ~278k files), `pathlib.PurePosixPath` object instantiations and property traversals (`.parent`, `.parts`) create tens of millions of python function calls and object allocations, causing severe performance bottlenecks (~46s runtime). Simple string operations (`rfind('/')`, string slicing) combined with early termination when visiting known parent paths reduce execution time by over 15x.
+**Action:** When indexing or traversing file paths at scale (100k+ paths), prefer raw string slicing and memoized/early-exit parent traversal over instantiating `pathlib` objects for every file.
