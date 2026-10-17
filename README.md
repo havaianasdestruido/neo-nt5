@@ -74,6 +74,6 @@ The timebomb feature can be enabled or disabled by commenting or uncommenting th
 
 ## Product Keys
 
-- **Standard Edition**: `M6RJ9-TBJH3-9DDXM-4VX9Q-K8M8M`
-- **Enterprise Edition**: `QW32K-48T2T-3D2PJ-DXBWY-C6WRJ`
-- **Enterprise x64**: `KK2WD-BFYJ6-77X87-8TRBF-9B343`
+Product keys must be supplied during installation using valid licenses obtained from official Microsoft licensing channels or volume licensing agreements.
+
+> **Security Note**: Never publish, embed, or commit actual product keys, private certificates, or plain-text credentials in repository source files or documentation.
