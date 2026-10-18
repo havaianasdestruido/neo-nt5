@@ -66,7 +66,7 @@ def main() -> int:
         if not raw:
             continue
         parts = raw.decode("utf-8", "surrogateescape").split("/")
-        if len(parts) < 2 or parts[0] == "agents":
+        if len(parts) < 2 or parts[0] in ("agents", ".jules"):
             continue
         roots.add(parts[0])
         if len(parts) > 2:

@@ -74,6 +74,4 @@ The timebomb feature can be enabled or disabled by commenting or uncommenting th
 
 ## Product Keys
 
-- **Standard Edition**: `M6RJ9-TBJH3-9DDXM-4VX9Q-K8M8M`
-- **Enterprise Edition**: `QW32K-48T2T-3D2PJ-DXBWY-C6WRJ`
-- **Enterprise x64**: `KK2WD-BFYJ6-77X87-8TRBF-9B343`
+Product keys are required during OS installation and setup. Use a valid product key provided with your official Windows installation media or license agreement. Do not publish plain text product keys or embedded secrets in repository documentation.
