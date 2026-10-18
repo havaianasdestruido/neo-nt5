@@ -1,3 +1,7 @@
 ## 2025-05-18 - Pathlib Object Overhead in Large Monorepos
 **Learning:** In codebases with hundreds of thousands of tracked files (e.g., ~278k files), `pathlib.PurePosixPath` object instantiations and property traversals (`.parent`, `.parts`) create tens of millions of python function calls and object allocations, causing severe performance bottlenecks (~46s runtime). Simple string operations (`rfind('/')`, string slicing) combined with early termination when visiting known parent paths reduce execution time by over 15x.
 **Action:** When indexing or traversing file paths at scale (100k+ paths), prefer raw string slicing and memoized/early-exit parent traversal over instantiating `pathlib` objects for every file.
+
+## 2025-05-18 - In-Memory Tracked File Lookup and Fast-Path Link Parsing
+**Learning:** In large repositories with tens of thousands of markdown links (~56k links), validating links via individual `os.stat`/`Path.exists()` calls and full `urllib.parse.urlsplit` invocations introduces significant I/O and CPU overhead. Pre-populating an in-memory `set` of tracked files and directories from `git ls-files` eliminates filesystem syscalls, while fast-pathing simple relative targets and fragment anchors bypasses parser overhead for 99.9% of links, yielding a ~39% reduction in execution time (from ~2.10s to ~1.28s).
+**Action:** When validating batch file links across large documentation sets, prefer set lookup against pre-indexed git tracked paths and fast-path string checks over individual `stat()` syscalls and general-purpose URL splitters.
