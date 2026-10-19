@@ -34,7 +34,7 @@
 
 <!-- ***** To change the form's logo, simply save your logo using the name IS2LOGO.GIF
        in the same directory as this form. -->
-    <IMG SRC ="is2logo.gif" VALIGN=MIDDLE ALIGN=LEFT  border=0>
+    <IMG SRC ="is2logo.gif" VALIGN=MIDDLE ALIGN=LEFT  border=0 alt="Microsoft Indexing Service">
 
         </A></TD></TR>
     <TR><TD ALIGN="RIGHT"><H3>
@@ -52,15 +52,15 @@
                                 <td>Enter your query below:</td>
                         </TR>
                         <TR>
-                                <TD><INPUT TYPE="TEXT" NAME="OriginalQuery" SIZE="65" MAXLENGTH="100" VALUE=""></TD>
-                                <TD><BUTTON TYPE=SUBMIT>Go</BUTTON></TD>
+                                <TD><INPUT TYPE="TEXT" ID="OriginalQuery" NAME="OriginalQuery" SIZE="65" MAXLENGTH="100" VALUE="" aria-label="Search query"></TD>
+                                <TD><BUTTON TYPE=SUBMIT aria-label="Execute search query">Go</BUTTON></TD>
                         </TR>
                                 <TR>
                                 <TD ALIGN="RIGHT"><A HREF="ixtiphlp.htm">Tips for searching</A></TD>
                         </TR>
                         <TR>
                                 <TD>
-                                        <P><INPUT NAME="Advanced" TYPE=CHECKBOX>Use <a href="ixtiphlp.htm">Advanced Query</a>.
+                                        <P><INPUT NAME="Advanced" TYPE=CHECKBOX ID="Advanced"><label for="Advanced">Use <a href="ixtiphlp.htm">Advanced Query</a>.</label>
                                 </TD>
                         </TR>
         </TABLE>
