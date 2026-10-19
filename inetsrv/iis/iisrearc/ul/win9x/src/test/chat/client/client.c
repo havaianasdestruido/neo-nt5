@@ -63,7 +63,7 @@ main( int argc, char *argv[] )
 	pUri[ulCount] = 0;
 	ulSize = sizeof( WCHAR ) * ( ulCount + 1 );
 
-	memset( &Overlapped, sizeof( Overlapped ), 0 );
+	memset( &Overlapped, 0, sizeof( Overlapped ) );
 	Overlapped.hEvent = CreateEvent( NULL, FALSE, FALSE, NULL );
 
 	result = UlSendMessage(
@@ -112,7 +112,7 @@ main( int argc, char *argv[] )
 
 	if ( hPubThread == NULL ) goto cleanup;
 
-	memset( &Overlapped, sizeof( Overlapped ), 0 );
+	memset( &Overlapped, 0, sizeof( Overlapped ) );
 	Overlapped.hEvent = CreateEvent( NULL, FALSE, FALSE, NULL );
 
 	while ( TRUE )
@@ -174,7 +174,7 @@ Publisher( LPVOID lpParam )
 	BYTE pBuffer[CHAT_BUFFER_SIZE];
 	ULONG dwWhich, result, dwSize, ulCount, ulSize;
 
-	memset( &Overlapped, sizeof( Overlapped ), 0 );
+	memset( &Overlapped, 0, sizeof( Overlapped ) );
 	Overlapped.hEvent = CreateEvent( NULL, FALSE, FALSE, NULL );
 
 	lpHandles[CHAT_EVENTS_EXIT] = hExitThread;
