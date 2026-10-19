@@ -1,3 +1,7 @@
 ## 2025-05-18 - Pathlib Object Overhead in Large Monorepos
 **Learning:** In codebases with hundreds of thousands of tracked files (e.g., ~278k files), `pathlib.PurePosixPath` object instantiations and property traversals (`.parent`, `.parts`) create tens of millions of python function calls and object allocations, causing severe performance bottlenecks (~46s runtime). Simple string operations (`rfind('/')`, string slicing) combined with early termination when visiting known parent paths reduce execution time by over 15x.
 **Action:** When indexing or traversing file paths at scale (100k+ paths), prefer raw string slicing and memoized/early-exit parent traversal over instantiating `pathlib` objects for every file.
+
+## 2025-05-19 - Caching System Calls & Path String Normalization for High-Volume Link Validation
+**Learning:** When validating tens of thousands of relative markdown links (~56k links across documentation pages), making ~56k unmemoized `Path.exists()` / `os.path.exists()` calls generates massive call overhead and ~56k redundant `stat()` system calls (~5.1s runtime). Memoizing `os.path.exists()` with `@lru_cache` while keeping standard `urllib.parse.urlsplit()` reduces runtime to ~1.4s (a ~3.6x speedup) with full URL scheme/relative-link correctness.
+**Action:** For high-volume validation loops that repeatedly check file existence, use `@lru_cache` for filesystem `os.path.exists` checks rather than hand-rolling URL parsers.
