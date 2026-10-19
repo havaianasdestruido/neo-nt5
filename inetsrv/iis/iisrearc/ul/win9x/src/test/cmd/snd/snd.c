@@ -47,7 +47,7 @@ main( int argc, char *argv[] )
 	dwTimeout = atoi( argv[2] );
 	if ( dwTimeout == 0 ) dwTimeout = INFINITE;
 
-	memset( &Overlapped, sizeof( Overlapped ), 0 );
+	memset( &Overlapped, 0, sizeof( Overlapped ) );
 	Overlapped.hEvent = CreateEvent( NULL, FALSE, FALSE, NULL );
 
 	//

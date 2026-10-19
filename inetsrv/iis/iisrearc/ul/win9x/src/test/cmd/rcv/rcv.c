@@ -57,7 +57,7 @@ main( int argc, char *argv[] )
 	dwBufferSize = atoi( argv[3] );
 	if ( dwBufferSize < 0 || dwBufferSize>CMD_BUFFER_SIZE ) dwBufferSize = 10;
 
-	memset( &Overlapped, sizeof( Overlapped ), 0 );
+	memset( &Overlapped, 0, sizeof( Overlapped ) );
 	Overlapped.hEvent = CreateEvent( NULL, FALSE, FALSE, NULL );
 
 	//

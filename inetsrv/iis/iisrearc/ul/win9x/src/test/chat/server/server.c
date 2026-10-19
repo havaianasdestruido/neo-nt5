@@ -101,7 +101,7 @@ main( int argc, char *argv[] )
 
 	if ( hPubThread == NULL ) goto cleanup;
 
-	memset( &Overlapped, sizeof( Overlapped ), 0 );
+	memset( &Overlapped, 0, sizeof( Overlapped ) );
 	Overlapped.hEvent = CreateEvent( NULL, FALSE, FALSE, NULL );
 
 	while ( TRUE )
@@ -216,7 +216,7 @@ Subscriber( LPVOID lpParam )
 	ULONG result, dwWhich, dwSize, ulCount;
 	PCHAT_CLIENT_LIST pTemp;
 
-	memset( &Overlapped, sizeof( Overlapped ), 0 );
+	memset( &Overlapped, 0, sizeof( Overlapped ) );
 	Overlapped.hEvent = CreateEvent( NULL, FALSE, FALSE, NULL );
 
 	lpHandles[CHAT_EVENTS_EXIT] = hExitThread;
