@@ -16,7 +16,10 @@ import subprocess
 import sys
 from urllib.parse import quote
 
+import os
+
 ROOT = Path(__file__).resolve().parent.parent
+ROOT_STR = str(ROOT)
 OUTPUT = Path(__file__).resolve().parent / "catalog"
 ASSIGNMENT = re.compile(r"^\s*(TARGETNAME|TARGETTYPE)\s*=\s*(.*?)\s*$", re.I)
 BUILD_FILES = {"dirs", "sources", "makefile"}
@@ -24,7 +27,12 @@ BUILD_FILES = {"dirs", "sources", "makefile"}
 
 def source_declarations(path_str: str) -> tuple[str, str]:
     """First textual declarations; do not pretend to resolve includes or !IF blocks."""
-    raw = (ROOT / path_str).read_bytes()
+    # OPTIMIZATION: Performance optimization by Bolt ⚡
+    # 1. Use open() with os.path.join instead of instantiating pathlib.Path for every sources file.
+    # 2. Filter out lines without '=' before regex matching to avoid 400,000+ unnecessary regex calls.
+    # 3. Stop parsing early once both TARGETNAME and TARGETTYPE are found.
+    with open(os.path.join(ROOT_STR, path_str), "rb") as f:
+        raw = f.read()
     if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
         text = raw.decode("utf-16", "replace")
     elif raw[:1024].count(b"\0") > 100:
@@ -33,11 +41,15 @@ def source_declarations(path_str: str) -> tuple[str, str]:
         text = raw.decode("utf-8-sig", "replace")
     found: dict[str, str] = {}
     for line in text.splitlines():
+        if "=" not in line:
+            continue
         if line.lstrip().startswith(("#", ";", "//")):
             continue
         match = ASSIGNMENT.match(line)
         if match:
             found.setdefault(match[1].upper(), match[2].strip())
+            if len(found) == 2:
+                break
     return found.get("TARGETNAME", ""), found.get("TARGETTYPE", "")
 
 
@@ -98,7 +110,16 @@ def generate() -> dict[str, str]:
         if name == "sources":
             declarations[parent] = source_declarations(p)
 
-    roots = sorted({p[:p.find("/")] if "/" in p else p for p in all_dirs})
+    # OPTIMIZATION: Performance optimization by Bolt ⚡
+    # Group directories by root tree in a single pass O(N) dict lookup instead of
+    # scanning all 56,000+ directories for each root tree O(N * roots).
+    dirs_by_root: dict[str, list[str]] = defaultdict(list)
+    for p in all_dirs:
+        c_idx = p.find("/")
+        r = p[:c_idx] if c_idx != -1 else p
+        dirs_by_root[r].append(p)
+
+    roots = sorted(dirs_by_root.keys())
     files: dict[str, str] = {}
     index = [
         "# Tracked directory catalog",
@@ -120,7 +141,7 @@ def generate() -> dict[str, str]:
     ]
 
     for root in roots:
-        dirs = sorted((p for p in all_dirs if p == root or p.startswith(root + "/")))
+        dirs = sorted(dirs_by_root[root])
         source_count = sum("sources" in direct_files[p] for p in dirs)
         index.append(f"| [{root}]({root}.md) | {len(dirs)} | {source_count} |")
         page = [
