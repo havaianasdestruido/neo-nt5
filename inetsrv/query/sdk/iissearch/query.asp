@@ -134,7 +134,7 @@
 <BODY OnLoad="Init()" LANGUAGE="JSCRIPT" <%=FormBG%>>
 
 <TABLE>
-    <TR><TD><A HREF="http://www.microsoft.com/ntserver/search" target="_top"><IMG SRC ="<%=FormLogo%>" border=0 VALIGN=MIDDLE ALIGN=LEFT></a></TD></TR>
+    <TR><TD><A HREF="http://www.microsoft.com/ntserver/search" target="_top"><IMG SRC ="<%=FormLogo%>" border=0 VALIGN=MIDDLE ALIGN=LEFT alt="Microsoft Indexing Service"></a></TD></TR>
     <TR><TD ALIGN="RIGHT"><H3>Sample ASP Search Form</H3></TD></TR>
 </TABLE>
 
@@ -146,7 +146,7 @@
             <TD>Enter your query below:</TD>
         </TR>
         <TR>
-            <TD><INPUT TYPE="TEXT" NAME="SearchString" SIZE="65" MAXLENGTH="100" VALUE="<%=SearchString%>" TABINDEX=1></TD>
+            <TD><INPUT TYPE="TEXT" ID="SearchString" NAME="SearchString" SIZE="65" MAXLENGTH="100" VALUE="<%=SearchString%>" TABINDEX=1 aria-label="Search query"></TD>
             <TD><BUTTON TYPE=SUBMIT NAME="Action">Go</BUTTON></TD>
         </TR>
         <TR>
@@ -155,8 +155,8 @@
         <TR>
         </TR>
         <TR>
-            <TD><INPUT NAME="Advanced" TYPE=CHECKBOX<% if Advanced = "on" then Response.Write(" CHECKED") end if %>>
-                Use <a href="ixtiphlp.htm">Advanced Query</a>.
+            <TD><INPUT NAME="Advanced" TYPE=CHECKBOX ID="Advanced"<% if Advanced = "on" then Response.Write(" CHECKED") end if %>>
+                <label for="Advanced">Use Advanced Query.</label>
             </TD>
         </TR>
     </TABLE>
@@ -325,10 +325,10 @@
 '       WebHitsQuery = WebHitsQuery & "&CiLocale=" & Q.LocaleID
  %>
                 <a href="qsumrhit.htw?<%= WebHitsQuery %>">
-                <IMG src="hilight.gif" align=left alt="Highlight matching terms in document using Summary mode."> Summary</a>
+                <IMG src="hilight.gif" align=left alt="" aria-hidden="true"> Summary</a>
                 <br>
                 <a href="qfullhit.htw?<%= WebHitsQuery %>&CiHiliteType=Full">
-                <IMG src="hilight.gif" align=left alt="Highlight matching terms in document."> Full</a>
+                <IMG src="hilight.gif" align=left alt="" aria-hidden="true"> Full</a>
             </td>
             <td valign=top>
                 <%if VarType(RS("characterization")) = 8 and RS("characterization") <> "" then%>
