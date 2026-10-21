@@ -17,6 +17,7 @@ import sys
 from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parent.parent
+ROOT_STR = str(ROOT)
 OUTPUT = Path(__file__).resolve().parent / "catalog"
 ASSIGNMENT = re.compile(r"^\s*(TARGETNAME|TARGETTYPE)\s*=\s*(.*?)\s*$", re.I)
 BUILD_FILES = {"dirs", "sources", "makefile"}
@@ -24,7 +25,11 @@ BUILD_FILES = {"dirs", "sources", "makefile"}
 
 def source_declarations(path_str: str) -> tuple[str, str]:
     """First textual declarations; do not pretend to resolve includes or !IF blocks."""
-    raw = (ROOT / path_str).read_bytes()
+    # OPTIMIZATION: Performance optimization by Bolt ⚡
+    # Avoid Path instantiation per file, pre-filter lines for 'TARGET'/'target' substring
+    # before regex matching, and break early when both TARGETNAME and TARGETTYPE are found.
+    with open(f"{ROOT_STR}/{path_str}", "rb") as f:
+        raw = f.read()
     if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
         text = raw.decode("utf-16", "replace")
     elif raw[:1024].count(b"\0") > 100:
@@ -33,11 +38,15 @@ def source_declarations(path_str: str) -> tuple[str, str]:
         text = raw.decode("utf-8-sig", "replace")
     found: dict[str, str] = {}
     for line in text.splitlines():
+        if "target" not in line.lower():
+            continue
         if line.lstrip().startswith(("#", ";", "//")):
             continue
         match = ASSIGNMENT.match(line)
         if match:
             found.setdefault(match[1].upper(), match[2].strip())
+            if len(found) == 2:
+                break
     return found.get("TARGETNAME", ""), found.get("TARGETTYPE", "")
 
 
@@ -99,6 +108,13 @@ def generate() -> dict[str, str]:
             declarations[parent] = source_declarations(p)
 
     roots = sorted({p[:p.find("/")] if "/" in p else p for p in all_dirs})
+    # OPTIMIZATION: Performance optimization by Bolt ⚡
+    # Pre-group directory paths by root tree to avoid O(N * R) full-scan filtering over all_dirs.
+    root_dirs: dict[str, list[str]] = defaultdict(list)
+    for p in all_dirs:
+        root_key = p[:p.find("/")] if "/" in p else p
+        root_dirs[root_key].append(p)
+
     files: dict[str, str] = {}
     index = [
         "# Tracked directory catalog",
@@ -120,7 +136,7 @@ def generate() -> dict[str, str]:
     ]
 
     for root in roots:
-        dirs = sorted((p for p in all_dirs if p == root or p.startswith(root + "/")))
+        dirs = sorted(root_dirs[root])
         source_count = sum("sources" in direct_files[p] for p in dirs)
         index.append(f"| [{root}]({root}.md) | {len(dirs)} | {source_count} |")
         page = [
