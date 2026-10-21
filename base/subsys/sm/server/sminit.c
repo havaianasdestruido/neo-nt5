@@ -1534,6 +1534,7 @@ SmpCreateDynamicEnvironmentVariables(
         ULONG BrandingResultSize = 0;
         NTSTATUS BrandingStatus;
 
+        ValueData = NULL;
         RtlInitUnicodeString( &BrandingValueName, L"Branding" );
         BrandingStatus = NtQueryValueKey( Key,
                                          &BrandingValueName,
@@ -1552,6 +1553,8 @@ SmpCreateDynamicEnvironmentVariables(
                                                  &BrandingResultSize );
                 if (NT_SUCCESS( BrandingStatus ) && BrandingInfo->Type == REG_SZ &&
                     BrandingInfo->DataLength >= sizeof( WCHAR )) {
+                    ULONG CharCount = BrandingInfo->DataLength / sizeof( WCHAR );
+                    ((PWSTR)BrandingInfo->Data)[CharCount - 1] = L'\0';
                     ValueData = (PWSTR)BrandingInfo->Data;
                 } else {
                     ValueData = NULL;
