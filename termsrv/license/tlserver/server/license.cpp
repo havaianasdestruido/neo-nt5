@@ -410,7 +410,7 @@ TLSDBLicenseAddEntry(
     GetSystemTimeAsFileTime(&(pLicense->ftLastModifyTime));
     bSuccess = licenseTable.InsertRecord(*pLicense);
 
-    if(bSuccess = FALSE)
+    if(bSuccess == FALSE)
     {
         if(licenseTable.GetLastJetError() == JET_errKeyDuplicate)
         {
