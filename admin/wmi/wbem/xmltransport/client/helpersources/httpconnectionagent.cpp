@@ -598,8 +598,11 @@ HRESULT CHTTPConnectionAgent::GetResultHeader(WCHAR **ppszBuffer, DWORD *pdwHead
 		bResult = HttpQueryInfo(m_hOpenRequest,HTTP_QUERY_RAW_HEADERS_CRLF,
 			szResult,&dwBufLen,&dwNextHeader);
 
-		if(bResult = FALSE)
+		if(bResult == FALSE)
+		{
+			delete [] szResult;
 			hr = E_FAIL;
+		}
 		else
 			*ppszBuffer = szResult;
 
