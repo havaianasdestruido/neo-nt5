@@ -255,6 +255,25 @@ workstream (`KRN-001`…`KRN-003`) — not as an assumption.
 - Product keys are still published in `README.md:75-79` (F-33).
 - Build is timebombed by default (`tools/postbuildscripts/timebomb.cmd:44`).
 
+### 2.6 Audit environment and its limits `[V]`
+
+Be explicit about what was *not* done, because the plan's credibility depends on it:
+
+- The audit ran in a **Linux sandbox**. There is no `cl.exe`/`build.exe` execution environment, no
+  Windows host, and no bootable media. **No build, install, boot, driver load, or runtime test was
+  performed.**
+- Evidence is therefore: file reads, `rg`/`grep` searches, `python3 agents/*.py` runs, GCC
+  preprocessing of `.dlg`/header fragments, `strings` on checked-in binaries, and one existing
+  reproduction script (`agents/audit_reproduce.py`, which itself now fails at its last probe —
+  F-17).
+- Every quantitative claim in §2 and §4 cites a path and, where useful, a line. Where a claim is
+  an inference from structure (for example "no AES in Schannel"), it is phrased as an absence
+  observed by search, not as proof of impossibility — absence of a symbol in this snapshot does
+  not guarantee it was never present in the original product.
+- Findings that depend on runtime behaviour (performance, crash reproducibility under load,
+  hardware compatibility) are **not** in §4; they live as test tasks in Phase 13 and must be
+  established there.
+
 ---
 
 ## 3. Feasibility doctrine
