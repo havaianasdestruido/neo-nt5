@@ -7,6 +7,44 @@ content to "improve" the product.
 
 ---
 
+## 0. The ultimate final goal
+
+**The final goal of this project is to complete _everything_ in [`PLAN.md`](PLAN.md).**
+
+`AGENTS.md` and `PLAN.md` are a pair, and they answer different questions:
+
+| File | Question it answers | Authority |
+| --- | --- | --- |
+| `AGENTS.md` (this file) | **How** may the tree be changed? | Method: source-only policy, scope, workflow. |
+| `PLAN.md` | **What** must be done, in what order, and **when is it truly done**? | Content and priority: tasks, gates, milestones. |
+
+Concretely, the project is finished only when:
+
+1. **Every task** in `PLAN.md` §7 (Phases 0–15, the full tracked checklist) is closed — `[x]` with
+   the evidence its acceptance criteria demand, or `[-]` / `[!]` with a recorded, justified reason.
+2. **Every release gate** `R1`–`R10` in `PLAN.md` §6 is green, backed by the named test run,
+   artifact, or document. No gate is declared green on intention (`R10`).
+3. **Every milestone** `M0`–`M8` in `PLAN.md` §9 has been reached in order, each with its exit
+   gate and artifact.
+4. **Nothing is left dangling**: every `[!]` in the §10 registry either gets unblocked by a written
+   spike or stays registered with its `blocked-by:` reasons.
+
+Rules that follow from that goal:
+
+* **Progress is measured by `PLAN.md` status, not by commits, merged PRs, or tidied docs.** A turn
+  that advances no `PLAN.md` task is out of scope unless the user explicitly asked for it.
+* **Pick work from `PLAN.md`, not from whatever looks interesting.** Follow the phase order and the
+  `dep:` links; if you must deviate, say why and record it in the plan.
+* **Keep the plan honest.** Move status as you go (`[ ]` → `[~]` → `[x]` / `[!]` / `[-]`), add the
+  required row to §13, and run `python3 agents/plan_stats.py --write` after status edits.
+* **Never fake completion.** No `[x]` without evidence, no deleting unfinished tasks, no "done"
+  that exists only in a report. If a source-level fix is impossible in this checkout, that is a
+  `[!]` with a reason — not a silent HTML or documentation edit.
+* **If this file and `PLAN.md` seem to conflict:** `PLAN.md` sets *what* and *priority*; this file
+  sets *how*. Neither one relaxes the source-only rule in §1.
+
+---
+
 ## 1. The one rule
 
 **Never edit `.htm` / `.html` files (any letter case) to make a visual change.**
@@ -132,4 +170,5 @@ look better", "fix the visuals", or "improve the UI" never qualify.
 **Summary:** only real source code. C/C++, headers, assembly, and Batchfile for
 anything; compiled resources only when the source change requires them. Never
 HTML for visual changes. Skip the low-value cosmetic, micro-performance, and
-speculative security edits to non-source files.
+speculative security edits to non-source files. The destination is `PLAN.md`
+complete — and every step toward it has to be real source code.
