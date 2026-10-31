@@ -2518,4 +2518,3 @@ out of scope in the ledger.
 
 Run `python3 agents/plan_stats.py --write` after every status change; it rewrites the snapshot
 in §0.6 and fails if two tasks share an ID.
-
