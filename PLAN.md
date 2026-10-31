@@ -614,13 +614,13 @@ Priority is driven by exposure: anything network-reachable or privileged comes f
   - Done when: a default boot configuration has debugging disabled; a test enables it explicitly.
   - Deps: none.
 
-- [ ] **SEC-024** · P2 · ARCH · XL · [!] — Kernel patch protection (PatchGuard-equivalent). No code exists (V-13). Design study required, and it has its own threat model.
+- [!] **SEC-024** · P2 · ARCH · XL — Kernel patch protection (PatchGuard-equivalent). No code exists (V-13). Design study required, and it has its own threat model.
   - Done when: the design study is recorded. Until then, the plan does not claim kernel integrity protection.
 
-- [ ] **SEC-025** · P2 · ARCH · XL · [!] — TPM-backed measured boot and BitLocker-with-TPM. No TPM stack (4.4).
+- [!] **SEC-025** · P2 · ARCH · XL — TPM-backed measured boot and BitLocker-with-TPM. No TPM stack (4.4).
   - Done when: unblock requires a TPM stack decision (DEC-02). Software volume encryption is a separate item (FS-015).
 
-- [ ] **SEC-026** · P2 · ARCH · XL · [!] — VBS, HVCI, and Credential Guard. Requires a hypervisor not in this tree (4.4).
+- [!] **SEC-026** · P2 · ARCH · XL — VBS, HVCI, and Credential Guard. Requires a hypervisor not in this tree (4.4).
   - Done when: unblock requires a hypervisor decision.
 
 - [ ] **SEC-027** · P1 · BP · S — Signatures: block MD5-RSA for new signatures; treat SHA-1 signatures as policy-controlled. SHA-2 signing depends on CRY-002.
@@ -698,7 +698,7 @@ Priority is driven by exposure: anything network-reachable or privileged comes f
   - Done when: see AUT-001.
   - Deps: AUT-001.
 
-- [ ] **CRY-014** · P2 · [!] — FIPS 140 validation requires an accredited lab. Not in scope.
+- [!] **CRY-014** · P2 — FIPS 140 validation requires an accredited lab. Not in scope.
   - Done when: unblock requires a funded validation; until then, the plan claims no FIPS status.
 
 - [ ] **CRY-015** · P1 · BP · S — Crypto dependency watch: list every vendored crypto implementation (SUP-001) with its version and a CVE watch.
@@ -727,7 +727,7 @@ Priority is driven by exposure: anything network-reachable or privileged comes f
   - Done when: NLA-enabled RDP connects between this client and server in a test; without CRY-006, it stays `[!]`.
   - Deps: CRY-006, AUT-001.
 
-- [ ] **AUT-006** · P2 · [!] — Modern credentials (WebAuthn/FIDO2, OAuth-based sign-in). Requires TLS 1.2+ and a modern browser or host stack (4.4).
+- [!] **AUT-006** · P2 — Modern credentials (WebAuthn/FIDO2, OAuth-based sign-in). Requires TLS 1.2+ and a modern browser or host stack (4.4).
   - Done when: unblock requires CRY-006 and a decision on the browser path (APP-002).
 
 - [ ] **AUT-007** · P1 · BP · M — DPAPI key size and rotation: `ds/security/cryptoapi/secstor/dpapisvc` uses 1024-bit defaults in `keysrv.cpp` (lines 1663, 1732, 1764). Raise to 2048 and add master-key rotation.
@@ -798,7 +798,7 @@ Priority is driven by exposure: anything network-reachable or privileged comes f
   - Done when: the count of batch files that test `%OS%`, measured by search, all pass in a test run; `echo %OS%` returns `Windows_NT`.
   - Deps: BLD-003.
 
-- [ ] **BOOT-006** · P2 · ARCH · XL · [!] — Secure Boot. No references (V-13). Requires a signed loader chain, key enrollment, and a revocation list.
+- [!] **BOOT-006** · P2 · ARCH · XL — Secure Boot. No references (V-13). Requires a signed loader chain, key enrollment, and a revocation list.
   - Done when: unblock requires a key-ownership decision (GOV-003, DEC-02). Then: a verified boot chain in OVMF with Secure Boot on.
 
 - [ ] **BOOT-007** · P1 · PORT · M — Boot menu and recovery: last-known-good, safe mode, recovery console. `base/boot/oschoice` is present (V-54).
@@ -864,7 +864,7 @@ Priority is driven by exposure: anything network-reachable or privileged comes f
   - Done when: an idle USB hub suspends and wakes on device activity in a test.
   - Deps: USB-001.
 
-- [ ] **PWR-005** · P2 · [!] — Modern Standby (S0ix-style connected standby). Requires firmware and driver model changes not in tree.
+- [!] **PWR-005** · P2 — Modern Standby (S0ix-style connected standby). Requires firmware and driver model changes not in tree.
   - Done when: unblock requires a design decision; not in the daily-driver baseline.
 
 ### 6.13 PNP — Plug and Play and buses
@@ -881,7 +881,7 @@ Priority is driven by exposure: anything network-reachable or privileged comes f
   - Done when: hot-add and hot-remove of a PCIe device work on a QEMU root port in a test.
   - Deps: PNP-002.
 
-- [ ] **PNP-004** · P2 · [!] — CPU and memory hot-add on x86. Not in scope.
+- [!] **PNP-004** · P2 — CPU and memory hot-add on x86. Not in scope.
 
 - [ ] **PNP-005** · P1 · BP · S — Enumeration performance: measure device enumeration time at boot and on hot-add.
   - Done when: enumeration times are recorded in the PERF baseline (section 7.3).
@@ -921,7 +921,7 @@ Priority is driven by exposure: anything network-reachable or privileged comes f
   - Done when: one UVC webcam streams in a capture application test.
   - Deps: USB-001.
 
-- [ ] **USB-007** · P2 · [!] — Thunderbolt and USB4. Needs xHCI and vendor firmware.
+- [!] **USB-007** · P2 — Thunderbolt and USB4. Needs xHCI and vendor firmware.
   - Done when: unblock requires USB-002 and vendor specs.
 
 ### 6.15 STO — Storage
@@ -1000,7 +1000,7 @@ Priority is driven by exposure: anything network-reachable or privileged comes f
   - Done when: a UDF 2.5 or 2.6 image mounts and reads in a test.
   - Deps: BLD-006.
 
-- [ ] **FS-008** · P3 · [!] — ReFS. Not present; not needed for a daily-driver baseline (4.4).
+- [!] **FS-008** · P3 — ReFS. Not present; not needed for a daily-driver baseline (4.4).
 
 - [ ] **FS-009** · P1 · PORT · M — Long paths: NTFS supports long names (V-31); Win32 path handling is limited to MAX_PATH unless `\\?\` is used. Test the `\\?\` path for file APIs that exist in the tree.
   - Done when: a 32K path test passes for each file API in scope.
@@ -1068,10 +1068,10 @@ Priority is driven by exposure: anything network-reachable or privileged comes f
   - Done when: DHCPv6 leases in a test on a dual-stack network.
   - Deps: NET-003, NET-009.
 
-- [ ] **NET-011** · P1 · ARCH · XL · [!] — Wi-Fi: no 802.11 MAC or WLAN stack (V-34). WPA2 and WPA3 need the stack (NET-012).
+- [!] **NET-011** · P1 · ARCH · XL — Wi-Fi: no 802.11 MAC or WLAN stack (V-34). WPA2 and WPA3 need the stack (NET-012).
   - Done when: unblock requires an NDIS 6 wireless design (NET-001) and a WLAN stack decision.
 
-- [ ] **NET-012** · P1 · PORT · L · [!] — WPA2-PSK (CCMP, 802.11i) on top of NET-011. Blocked until NET-011 is designed.
+- [!] **NET-012** · P1 · PORT · L — WPA2-PSK (CCMP, 802.11i) on top of NET-011. Blocked until NET-011 is designed.
   - Done when: a WPA2-PSK association with a standard access point works.
 
 - [ ] **NET-013** · P1 · BP · M — 802.1X and EAPOL (wired): present (V-34). Test EAP-MSCHAPv2 now; EAP-TLS after CRY-006.
@@ -1090,7 +1090,7 @@ Priority is driven by exposure: anything network-reachable or privileged comes f
   - Done when: see SEC-017.
   - Deps: SEC-017.
 
-- [ ] **NET-017** · P3 · [!] — QUIC and HTTP/3. No QUIC identifiers (V-42 notes). Requires TLS 1.3 (CRY-007).
+- [!] **NET-017** · P3 — QUIC and HTTP/3. No QUIC identifiers (V-42 notes). Requires TLS 1.3 (CRY-007).
   - Done when: unblock requires CRY-007.
 
 - [ ] **NET-018** · P1 · PORT · L — HTTP/2 in WinHTTP and WinINet (absent, V-43). Requires TLS 1.2 and ALPN.
@@ -1109,10 +1109,10 @@ Priority is driven by exposure: anything network-reachable or privileged comes f
   - Done when: RDP 5.1 connects between this client and server; the feature gap list is recorded.
   - Deps: BLD-006.
 
-- [ ] **NET-022** · P1 · ARCH · XL · [!] — Bluetooth stack (absent, V-34; `BluetoothAPIs.h` and `ws2bth.h` absent, V-22). Needs a stack and drivers.
+- [!] **NET-022** · P1 · ARCH · XL — Bluetooth stack (absent, V-34; `BluetoothAPIs.h` and `ws2bth.h` absent, V-22). Needs a stack and drivers.
   - Done when: unblock requires a stack decision (DEC-02).
 
-- [ ] **NET-023** · P2 · [!] — DNS over TLS and DNS over HTTPS. Requires TLS 1.2+ (CRY-006).
+- [!] **NET-023** · P2 — DNS over TLS and DNS over HTTPS. Requires TLS 1.2+ (CRY-006).
   - Done when: unblock requires CRY-006.
 
 - [ ] **NET-024** · P2 · BP · M — NAT, Internet Connection Sharing, and the firewall (`net/rras`, and firewall code, **verify location**).
@@ -1129,7 +1129,7 @@ Priority is driven by exposure: anything network-reachable or privileged comes f
   - Done when: each mode sets and redraws correctly in a QEMU `std`-VGA-class test; the mode list is recorded.
   - Deps: BLD-006.
 
-- [ ] **GFX-002** · P1 · ARCH · XL · [!] — WDDM display model (absent, V-26). Modern GPU vendor drivers need WDDM. Two options: stay with XDDM for basic display, or design a WDDM stack (multi-year).
+- [!] **GFX-002** · P1 · ARCH · XL — WDDM display model (absent, V-26). Modern GPU vendor drivers need WDDM. Two options: stay with XDDM for basic display, or design a WDDM stack (multi-year).
   - Done when: DEC-02 decides; XDDM-only is recorded as the baseline with an explicit limit.
 
 - [ ] **GFX-003** · P1 · BP · M — Direct3D 8 (`multimedia/directx/dxg/d3d8`, V-44): software and reference rasterizers. Test with a D3D8 sample and a legacy game test.
@@ -1140,7 +1140,7 @@ Priority is driven by exposure: anything network-reachable or privileged comes f
   - Done when: a D3D9 sample runs on the chosen path; the approach is recorded.
   - Deps: GOV-006, GFX-003.
 
-- [ ] **GFX-005** · P3 · [!] — Direct3D 10, 11, 12 and DXGI (absent, V-22). Requires WDDM (GFX-002).
+- [!] **GFX-005** · P3 — Direct3D 10, 11, 12 and DXGI (absent, V-22). Requires WDDM (GFX-002).
   - Done when: unblock requires GFX-002.
 
 - [ ] **GFX-006** · P1 · PORT · M — OpenGL: `multimedia/opengl` present. Verify the ICD loader; test OpenGL 1.x and 2.x with a sample.
@@ -1163,7 +1163,7 @@ Priority is driven by exposure: anything network-reachable or privileged comes f
   - Done when: each font has a status in the license register.
   - Deps: GOV-008.
 
-- [ ] **GFX-011** · P2 · [!] — HDR and wide-gamut display output. Requires WDDM.
+- [!] **GFX-011** · P2 — HDR and wide-gamut display output. Requires WDDM.
   - Done when: unblock requires GFX-002.
 
 - [ ] **GFX-012** · P2 · PORT · L — DXVA-style hardware video decode. Verify the path (**verify**).
@@ -1188,14 +1188,14 @@ Priority is driven by exposure: anything network-reachable or privileged comes f
   - Done when: the DirectSound sample plays and the DirectMusic sample sequences.
   - Deps: AUD-001.
 
-- [ ] **AUD-005** · P2 · [!] — XAudio2 and XInput (absent, V-22). Needed by modern games; a clean-room XInput could map to DirectInput (see APP-008).
+- [!] **AUD-005** · P2 — XAudio2 and XInput (absent, V-22). Needed by modern games; a clean-room XInput could map to DirectInput (see APP-008).
   - Done when: unblock requires a decision on the game target list.
 
 - [ ] **AUD-006** · P2 · PORT · M — USB audio class devices (depends on USB-001).
   - Done when: a USB headset works in a test.
   - Deps: USB-001.
 
-- [ ] **AUD-007** · P3 · [!] — Bluetooth audio. Requires NET-022.
+- [!] **AUD-007** · P3 — Bluetooth audio. Requires NET-022.
 
 ### 6.20 MMD — Multimedia
 
@@ -1214,7 +1214,7 @@ Priority is driven by exposure: anything network-reachable or privileged comes f
   - Done when: the player's version is recorded and a playback test passes.
   - Deps: MMD-001.
 
-- [ ] **MMD-005** · P2 · [!] — DVD-Video playback with CSS decryption. Requires a CSS license (4.2).
+- [!] **MMD-005** · P2 — DVD-Video playback with CSS decryption. Requires a CSS license (4.2).
   - Done when: unblock requires a license decision.
 
 - [ ] **MMD-006** · P2 · ARCH · L — Hardware-accelerated decode and presentation. Depends on GFX-002.
@@ -1276,16 +1276,16 @@ Priority is driven by exposure: anything network-reachable or privileged comes f
   - Done when: the corpus is in `docs/apps/corpus.md`; the pass gate is in section 7.4.
   - Deps: TST-012.
 
-- [ ] **APP-002** · P2 · [!] — Modern browsers (Chromium, Firefox). See 4.4. Chrome 109 was the last release for Windows 7 and 8.1 [4](https://www.neowin.net/news/google-chrome-109-now-available-last-version-to-support-windows-7-and-81/). Requires CRY-006, API-002, and GFX-003 at minimum.
+- [!] **APP-002** · P2 — Modern browsers (Chromium, Firefox). See 4.4. Chrome 109 was the last release for Windows 7 and 8.1 [4](https://www.neowin.net/news/google-chrome-109-now-available-last-version-to-support-windows-7-and-81/). Requires CRY-006, API-002, and GFX-003 at minimum.
   - Done when: unblock requires a funded browser project.
 
-- [ ] **APP-003** · P2 · [!] — .NET Framework 4.x and modern .NET (netfx absent; `com/dirs` target missing). Requires a licensed source or runtime with an OS floor this line does not meet.
+- [!] **APP-003** · P2 — .NET Framework 4.x and modern .NET (netfx absent; `com/dirs` target missing). Requires a licensed source or runtime with an OS floor this line does not meet.
   - Done when: unblock requires a decision.
 
-- [ ] **APP-004** · P2 · [!] — Java runtimes (`java` target missing from `inetcore/dirs`). Vendor JDKs set their own OS floor.
+- [!] **APP-004** · P2 — Java runtimes (`java` target missing from `inetcore/dirs`). Vendor JDKs set their own OS floor.
   - Done when: unblock requires a decision.
 
-- [ ] **APP-005** · P2 · [!] — PowerShell (modern, absent) and WSH (`wscript`/`cscript` present, VBScript and JScript present, V-06). Modern PowerShell is [!]. WSH is verified present; test it.
+- [!] **APP-005** · P2 — PowerShell (modern, absent) and WSH (`wscript`/`cscript` present, VBScript and JScript present, V-06). Modern PowerShell is [!]. WSH is verified present; test it.
   - Done when: WSH sample scripts run in a test; PowerShell is marked `[!]` with the reason.
 
 - [ ] **APP-006** · P1 · BP · M — Developer tooling in tree: debuggers in `sdktools/debuggers`, `ntsd`/`kd` (V-15). Verify each runs on the reference host.
@@ -1300,21 +1300,21 @@ Priority is driven by exposure: anything network-reachable or privileged comes f
   - Done when: each listed DirectX 8 game passes its launch and play test.
   - Deps: GFX-003, AUD-004.
 
-- [ ] **APP-009** · P2 · [!] — Modern games (DirectX 10+). Requires WDDM and D3D10+.
+- [!] **APP-009** · P2 — Modern games (DirectX 10+). Requires WDDM and D3D10+.
   - Done when: unblock requires GFX-005.
 
 - [ ] **APP-010** · P1 · BP · S — Installers: Windows Installer and setup API behavior. Test common installers (Inno Setup, NSIS, WiX-built MSI) for the baseline.
   - Done when: each installer completes install and uninstall in a test.
   - Deps: BLD-006.
 
-- [ ] **APP-011** · P1 · [!] — Microsoft Office and other productivity suites that are not in tree. Document; test open-source alternatives that run on the baseline.
+- [!] **APP-011** · P1 — Microsoft Office and other productivity suites that are not in tree. Document; test open-source alternatives that run on the baseline.
   - Done when: a productivity test list with results is recorded.
 
 - [ ] **APP-012** · P2 · PORT · M — Printing (`printscan` present): test local printers, network printers, and print-to-file. Verify whether IPP (RFC 8011) is supported (**verify**).
   - Done when: a print job completes to a local and a network printer in a test.
   - Deps: BLD-006.
 
-- [ ] **APP-013** · P3 · [!] — Windows 10/11 app model: UWP, AppContainer, WinRT (absent). See 4.4.
+- [!] **APP-013** · P3 — Windows 10/11 app model: UWP, AppContainer, WinRT (absent). See 4.4.
   - Done when: unblock requires a funded project.
 
 ### 6.23 SHL — Shell and user experience
@@ -1331,7 +1331,7 @@ Priority is driven by exposure: anything network-reachable or privileged comes f
   - Done when: the shell renders at 200% without clipping.
   - Deps: GFX-007.
 
-- [ ] **SHL-004** · P3 · [!] — Cloud-tied features (cloud search, online accounts, store). Out of scope (4.4).
+- [!] **SHL-004** · P3 — Cloud-tied features (cloud search, online accounts, store). Out of scope (4.4).
 
 - [ ] **SHL-005** · P1 · BP · S — Tray notifications and balloon tips.
   - Done when: a balloon notification shows and dismisses in a test.
@@ -1545,7 +1545,7 @@ Priority is driven by exposure: anything network-reachable or privileged comes f
   - Done when: the decision is recorded; if a framework is chosen, a sample loads.
   - Deps: DEC-02.
 
-- [ ] **DRV-005** · P2 · [!] — Modern driver model features that depend on WDDM or NDIS 6 (GFX-002, NET-001).
+- [!] **DRV-005** · P2 — Modern driver model features that depend on WDDM or NDIS 6 (GFX-002, NET-001).
   - Done when: unblock requires those items.
 
 - [ ] **DRV-006** · P1 · BP · S — OEM and unsigned driver packages: `drivers/oem` target is missing (V-59). Decide policy.
@@ -1604,7 +1604,7 @@ Priority is driven by exposure: anything network-reachable or privileged comes f
   - Done when: the pinned versions are in the host document.
   - Deps: BLD-005.
 
-- [ ] **SUP-005** · P2 · [!] — Binary-only components with no source. Cannot be rebuilt or patched. Plan replacement or source recovery.
+- [!] **SUP-005** · P2 — Binary-only components with no source. Cannot be rebuilt or patched. Plan replacement or source recovery.
   - Done when: each binary-only component is listed and has a replacement or a source plan.
   - Deps: SUP-001.
 
