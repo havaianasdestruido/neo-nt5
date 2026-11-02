@@ -963,10 +963,16 @@ Return Value:
     //      is not greater than the total bytes, and
     //      does not go beyond what we are given
     //
+    // Security note (NT-AUDIT-006): Ensure DataOffset is within received DataLength
+    // before subtraction, using unsigned comparisons to prevent signed/unsigned
+    // arithmetic mismatch and underflow that could allow out-of-bounds reads via
+    // FastIoWrite or RtlCopyMemory.
+    //
 
     if ( ( immediateLength > writeLength ) ||
-         ( immediateLength > ( WorkContext->ResponseBuffer->DataLength -
-                                    SmbGetUshort(&request->DataOffset) ) )
+         ( (ULONG)SmbGetUshort( &request->DataOffset ) > (ULONG)WorkContext->ResponseBuffer->DataLength ) ||
+         ( immediateLength > ( (ULONG)WorkContext->ResponseBuffer->DataLength -
+                                    (ULONG)SmbGetUshort( &request->DataOffset ) ) )
        ) {
 
         status = STATUS_INVALID_SMB;
