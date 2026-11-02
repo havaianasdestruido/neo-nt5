@@ -541,7 +541,24 @@ Return Value:
     //
     // Put the information requested by the caller onto the line
     //
-    length += (ULONG) vsprintf(&OutputBuffer[length], Format, arglist);
+    // Security fix (NT-AUDIT-001 / CVE-2003-0812): Use bounded _vsnprintf instead
+    // of unbounded vsprintf to prevent stack buffer overflow in OutputBuffer.
+    // Reserve at least 2 bytes for potential "\r\n\0" newline expansion.
+    //
+    if ( length + 3 < sizeof( OutputBuffer ) ) {
+        int written = _vsnprintf( &OutputBuffer[length],
+                                  sizeof( OutputBuffer ) - length - 2,
+                                  Format,
+                                  arglist );
+
+        if ( written < 0 || (ULONG)written >= sizeof( OutputBuffer ) - length - 2 ) {
+            length = (ULONG)(sizeof( OutputBuffer ) - 3);
+            OutputBuffer[length] = '\0';
+        } else {
+            length += (ULONG)written;
+        }
+    }
+
     BeginningOfLine = (length > 0 && OutputBuffer[length-1] == '\n' );
     if ( BeginningOfLine ) {
 
