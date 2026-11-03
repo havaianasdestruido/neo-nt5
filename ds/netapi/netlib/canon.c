@@ -505,7 +505,9 @@ Return Value:
                         break;
                     }
                     ptr = lastSlash = previousLastSlash;
-                    previousLastSlash = BackUpPath(Path, ptr - 1);
+                    // Security fix (NT-AUDIT-002 / CVE-2008-4250): Do not pass ptr - 1
+                    // when ptr == Path to avoid scanning below the buffer.
+                    previousLastSlash = (ptr > Path) ? BackUpPath(Path, ptr - 1) : NULL;
                 }
             } else if (nextCh == TCHAR_BACKSLASH) {
                 LPTSTR  src = lastSlash ? ptr + 1 : ptr + 2;
@@ -553,7 +555,12 @@ Return Value:
 --*/
 
 {
-    while ((*Path != TCHAR_BACKSLASH) && (Path != Stopper)) {
+    // Security fix (NT-AUDIT-002 / CVE-2008-4250): Prevent out-of-bounds backward
+    // read if Path starts before Stopper, and ensure Path stays strictly >= Stopper.
+    if (Path < Stopper) {
+        return NULL;
+    }
+    while ((Path > Stopper) && (*Path != TCHAR_BACKSLASH)) {
         --Path;
     }
     return (*Path == TCHAR_BACKSLASH) ? Path : NULL;
