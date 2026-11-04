@@ -150,13 +150,14 @@ Return Value:
     // <PathType> parameter.
     //
 
-    if (OutbufLen == 0) {
+    // Security fix (NT-AUDIT-009): Ensure Outbuf has capacity for at least one TCHAR.
+    if (OutbufLen < sizeof(TCHAR)) {
         return NERR_BufTooSmall;
     } else {
         *Outbuf = TCHAR_EOS;
     }
 
-    rc = CanonicalizePathName(Prefix, PathName, Outbuf, OutbufLen, NULL);
+    rc = CanonicalizePathName(noPrefix ? NULL : Prefix, PathName, Outbuf, OutbufLen, NULL);
     if (rc == NERR_Success) {
         rc = NetpwPathType(Outbuf, PathType, 0);
     }
