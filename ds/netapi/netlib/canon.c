@@ -170,8 +170,9 @@ Return Value:
     if (ARGUMENT_PRESENT(PathPrefix)) {
         prefixLen = STRLEN(PathPrefix);
         if (prefixLen) {
-            // Make sure we don't overrun our buffer
-            if (prefixLen > MAX_PATH*2 ) {
+            // Security fix (NT-AUDIT-003): Ensure prefix leaves room for potential
+            // appended backslash and null terminator within pathBuffer.
+            if (prefixLen > MAX_PATH*2 - 1) {
                 return ERROR_INVALID_NAME;
             }
             STRCPY(pathBuffer, PathPrefix);
@@ -182,6 +183,10 @@ Return Value:
             if (IS_PATH_SEPARATOR(*PathName)) {
                 ++PathName;
             }
+        } else {
+            // Security fix (NT-AUDIT-008): Ensure pathBuffer is initialized when
+            // PathPrefix is present but empty, preventing uninitialized STRCAT.
+            pathBuffer[0] = 0;
         }
     } else {
         prefixLen = 0;
