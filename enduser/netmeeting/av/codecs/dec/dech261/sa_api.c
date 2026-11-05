@@ -561,13 +561,15 @@ SaStatus_t SaDecompressBegin (SaHandle_t Sah, WAVEFORMATEX *wfIn,
         break;
 #ifdef MPEG_SUPPORT
      case SA_MPEG_DECODE:
-        if (Info->MDInfo->DecompressStarted = FALSE)
+        // Security fix: Use comparison (==) instead of assignment (=)
+        // to prevent resetting state and failing to start decompressor.
+        if (Info->MDInfo->DecompressStarted == FALSE)
            Info->MDInfo->DecompressStarted = TRUE;
         break;
 #endif /* MPEG_SUPPORT */
 #ifdef AC3_SUPPORT
      case SA_AC3_DECODE:
-        if (Info->AC3Info->DecompressStarted = FALSE)
+        if (Info->AC3Info->DecompressStarted == FALSE)
            Info->AC3Info->DecompressStarted = TRUE;
         break;
 #endif /* AC3_SUPPORT */
@@ -575,7 +577,7 @@ SaStatus_t SaDecompressBegin (SaHandle_t Sah, WAVEFORMATEX *wfIn,
 #ifdef G723_SUPPORT
      /*
      case SA_G723_DECODE:
-        if (Info->pSaG723Info->DecompressStarted = FALSE)
+        if (Info->pSaG723Info->DecompressStarted == FALSE)
            Info->pSaG723Info->DecompressStarted = TRUE;
         break;
       */
@@ -850,7 +852,8 @@ SaStatus_t SaCompressBegin (SaHandle_t Sah, WAVEFORMATEX *wfIn,
         SaSetParamInt(Sah, SA_PARAM_SAMPLESPERSEC, wfIn->nSamplesPerSec);
         SaSetParamInt(Sah, SA_PARAM_CHANNELS, wfIn->nChannels);
         sa_MpegVerifyEncoderSettings(Sah);
-        if (Info->MCInfo->CompressStarted = FALSE)
+        // Security fix: Use comparison (==) instead of assignment (=).
+        if (Info->MCInfo->CompressStarted == FALSE)
            Info->MCInfo->CompressStarted = TRUE;
         break;
 #endif /* MPEG_SUPPORT */
@@ -870,7 +873,7 @@ SaStatus_t SaCompressBegin (SaHandle_t Sah, WAVEFORMATEX *wfIn,
         //SaSetParamInt(Sah, SA_PARAM_CHANNELS, wfIn->nChannels);
         //sa_MpegVerifyEncoderSettings(Sah);
         /*
-        if (Info->pSaG723Info->CompressStarted = FALSE)
+        if (Info->pSaG723Info->CompressStarted == FALSE)
            Info->pSaG723Info->CompressStarted = TRUE;
         */
         break;
