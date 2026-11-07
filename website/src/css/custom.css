@@ -1,0 +1,5 @@
+:root { --ifm-color-primary: #2458a6; }
+.inventory { max-width: 1100px; margin: 2rem auto; padding: 0 1rem; }
+.inventory select, .inventory input { max-width: 100%; padding: .5rem; margin: .4rem .5rem .4rem 0; }
+.inventory article { border-top: 1px solid var(--ifm-color-emphasis-300); padding: 1rem 0; overflow-wrap: anywhere; }
+.inventory pre { white-space: pre-wrap; }

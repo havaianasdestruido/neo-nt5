@@ -77,3 +77,7 @@ The timebomb feature can be enabled or disabled by commenting or uncommenting th
 - **Standard Edition**: `M6RJ9-TBJH3-9DDXM-4VX9Q-K8M8M`
 - **Enterprise Edition**: `QW32K-48T2T-3D2PJ-DXBWY-C6WRJ`
 - **Enterprise x64**: `KK2WD-BFYJ6-77X87-8TRBF-9B343`
+
+## Documentation website
+
+The Docusaurus site and automatically generated source reference live in `website/`. See [the documentation guide](website/docs/intro.md) for coverage, regeneration, and GitHub Pages setup. The reference is a syntactic inventory, not a substitute for inspecting source or executing tests.
