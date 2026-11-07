@@ -34,6 +34,27 @@ class GeneratorTests(unittest.TestCase):
         self.assertTrue(g.is_test('base/foo_test.py'))
         self.assertFalse(g.is_test('base/latest/foo.cpp'))
 
+    def test_generation_writes_test_evidence(self):
+        # A definition may have zero calls, one call, or many calls in test files.
+        # Each case must render a page rather than fail tuple unpacking.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / 'repo'
+            for sub in ('src', 'tests'):
+                (root / sub).mkdir(parents=True)
+            (root / 'src' / 'foo.c').write_text('int foo(int x) { return x; }\nint bar(void) { return 0; }\n')
+            (root / 'tests' / 'test_foo.c').write_text('void test(void) { foo(1); foo(2); }\n')
+            out = Path(temp) / 'out'
+            original_root = g.ROOT
+            g.ROOT = root
+            try:
+                g.generate(out, ['src/foo.c', 'tests/test_foo.c'], 'abc')
+            finally:
+                g.ROOT = original_root
+            text = ''.join(p.read_text() for p in sorted(out.glob('*.md')))
+            self.assertIn('Test evidence', text)
+            self.assertEqual(text.count('[test call]'), 2)  # both calls to foo
+            self.assertIn('No matching call found', text)  # bar is never called
+
     def test_generation_cleans_stale_pages(self):
         with tempfile.TemporaryDirectory() as temp:
             out = Path(temp)

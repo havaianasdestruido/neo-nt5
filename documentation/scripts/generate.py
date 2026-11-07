@@ -164,7 +164,7 @@ def generate(output, paths, revision):
                 # C++ qualified names are compared by leaf name, so the association is intentionally conservative.
                 leaf = name.split('::')[-1]
                 variants = variants_for(name)
-                tests, test_total = tests_for(leaf)[0]
+                tests, test_total = tests_for(leaf)
                 test_text = ', '.join(f'[test call]({source_link(p,l,revision)})' for p,l in tests) or 'No matching call found in test-named files.'
                 if test_total > len(tests): test_text += f' (showing {len(tests)} of {test_total})'
                 difference = (f'{variants[0]} definitions with this exact name; {variants[1]} distinct body hashes. '
