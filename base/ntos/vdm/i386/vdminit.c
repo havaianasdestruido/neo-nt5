@@ -103,6 +103,12 @@ Return Value:
     ViewBase.LowPart = 0;
     ViewBase.HighPart = 0;
 
+    //
+    // Security fix (NT-AUDIT-005 / CVE-2007-1206): Map physical memory view as
+    // read-only (PAGE_READONLY) instead of PAGE_READWRITE to prevent concurrent
+    // user-mode threads from modifying physical page zero / IVT / BIOS data
+    // during the initialization window.
+    //
     Status = ZwMapViewOfSection (SectionHandle,
                                  NtCurrentProcess(),
                                  &BaseAddress,
@@ -112,7 +118,7 @@ Return Value:
                                  &ViewSize,
                                  ViewUnmap,
                                  0,
-                                 PAGE_READWRITE);
+                                 PAGE_READONLY);
 
     if (!NT_SUCCESS(Status)) {
        ZwClose (SectionHandle);
