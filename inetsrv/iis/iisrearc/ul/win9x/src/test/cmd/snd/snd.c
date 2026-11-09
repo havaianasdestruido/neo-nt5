@@ -40,7 +40,8 @@ main( int argc, char *argv[] )
 		return;
 	}
 
-	for ( ulCount = 0; argv[1][ulCount] != '\0'; ulCount++ ) pUri[ulCount] = argv[1][ulCount];
+	// Security fix: Bound copy to prevent buffer overflow in pUri
+	for ( ulCount = 0; argv[1][ulCount] != '\0' && ulCount < (CMD_BUFFER_SIZE - 1); ulCount++ ) pUri[ulCount] = argv[1][ulCount];
 	pUri[ulCount] = 0;
 	ulSize = sizeof( WCHAR ) * ( ulCount + 1 );
 
@@ -62,9 +63,14 @@ main( int argc, char *argv[] )
 	{
 		dwWhich = WAIT_OBJECT_0;
 
-		gets( pBuffer );
-		ulSize = atoi( pBuffer );
-		if ( ulSize == 0 ) goto myexit;
+		// Security fix: Use bounded fgets and validated range to prevent stack buffer overflow
+		if ( fgets( pBuffer, sizeof( pBuffer ), stdin ) == NULL ) goto myexit;
+		{
+			char *endptr;
+			long parsedSize = strtol( pBuffer, &endptr, 10 );
+			if ( endptr == pBuffer || parsedSize <= 0 || parsedSize >= CMD_BUFFER_SIZE ) goto myexit;
+			ulSize = (ULONG)parsedSize;
+		}
 
 		for ( ulCount = 0; ulCount<ulSize; ulCount++ ) pBuffer[ulCount] = '0'+((CHAR)(ulCount%10));
 		pBuffer[ulSize] = '\0';
