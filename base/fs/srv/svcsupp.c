@@ -1202,6 +1202,7 @@ SrvSendSecondClassMailslot (
     PVOID message;
     STRING domain;
     ULONG domainLength;
+    ULONG rawDomainLength;
     CHAR domainName[COMPUTER_NAME_LENGTH+1];
 
     PAGED_CODE( );
@@ -1209,35 +1210,41 @@ SrvSendSecondClassMailslot (
     //
     // Upcase the domain and find the domain length.
     //
+    // Security fix (NT-AUDIT-010): Bound domain upcasing to COMPUTER_NAME_LENGTH
+    // to prevent stack buffer overflow in domainName (CWE-121). Space-pad up to
+    // COMPUTER_NAME_LENGTH (15), and safely terminate at index COMPUTER_NAME_LENGTH
+    // so all 16 bytes are initialized, preventing stack leak (CWE-200).
+    //
 
-    for ( domainLength = 0; Domain[domainLength] != 0; domainLength++ ) {
+    for ( domainLength = 0; domainLength < COMPUTER_NAME_LENGTH && Domain[domainLength] != '\0'; domainLength++ ) {
         domainName[domainLength] = (CHAR)toupper( Domain[domainLength] );
     }
 
     //
-    // Now fill the remaining domain anme with spaces.
+    // Now fill the remaining domain name with spaces.
     //
 
     for ( ; domainLength < COMPUTER_NAME_LENGTH ; domainLength++ ) {
         domainName[domainLength] = ' ';
     }
 
-    domainName[++domainLength] = '\0';
-
-    ASSERT( domainLength == COMPUTER_NAME_LENGTH + 1);
+    domainName[COMPUTER_NAME_LENGTH] = '\0';
 
     domain.Buffer = domainName;
-    domain.Length = domain.MaximumLength = (USHORT)domainLength;
+    domain.Length = domain.MaximumLength = (USHORT)(COMPUTER_NAME_LENGTH + 1);
 
     //
     // Determine the sizes of various fields that will go in the SMB
     // and the total size of the SMB.
+    // Security note (NT-AUDIT-010): Use rawDomainLength rather than padded
+    // NetBIOS length for the mailslot payload to avoid out-of-bounds read (CWE-125).
     //
 
+    rawDomainLength = strlen( Domain );
     mailslotNameLength = strlen( mailslotNameData );
     userNameLength = strlen( UserName );
 
-    transactionDataSize = userNameLength + 1 + domainLength + 1 + MessageLength;
+    transactionDataSize = userNameLength + 1 + rawDomainLength + 1 + MessageLength;
     dataSize = mailslotNameLength + 1 + transactionDataSize;
     smbSize = sizeof(SMB_HEADER) + sizeof(SMB_TRANSACT_MAILSLOT) - 1 + dataSize;
 
@@ -1267,7 +1274,7 @@ SrvSendSecondClassMailslot (
     mailslotName = (PSZ)( parameters + 1 ) - 1;
     userName = mailslotName + mailslotNameLength + 1;
     domainInData = userName + userNameLength + 1;
-    message = domainInData + domainLength + 1;
+    message = domainInData + rawDomainLength + 1;
 
     parameters->WordCount = 0x11;
     SmbPutUshort( &parameters->TotalDataCount, (USHORT)transactionDataSize );
@@ -1284,7 +1291,7 @@ SrvSendSecondClassMailslot (
 
     RtlCopyMemory( mailslotName, mailslotNameData, mailslotNameLength + 1 );
     RtlCopyMemory( userName, UserName, userNameLength + 1 );
-    RtlCopyMemory( domainInData, Domain, domainLength + 1 );
+    RtlCopyMemory( domainInData, Domain, rawDomainLength + 1 );
     RtlCopyMemory( message, Message, MessageLength );
 
     //
