@@ -63,5 +63,51 @@ class GeneratorTests(unittest.TestCase):
             self.assertFalse((out / 'stale.md').exists())
             self.assertIn('0 definitions', (out / 'index.md').read_text())
 
+    def test_every_page_carries_a_faq(self):
+        # The FAQ must be on the index, the coverage report and every bucket page,
+        # not only on the hand-written guide pages.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / 'repo'
+            for sub in ('src', 'tests'):
+                (root / sub).mkdir(parents=True)
+            (root / 'src' / 'foo.c').write_text('int foo(int x) { return x; }\nint bar(void) { return 0; }\n')
+            (root / 'tests' / 'test_foo.c').write_text('void test(void) { foo(1); }\n')
+            out = Path(temp) / 'out'
+            original_root = g.ROOT
+            g.ROOT = root
+            try:
+                g.generate(out, ['src/foo.c', 'tests/test_foo.c'], 'abc')
+            finally:
+                g.ROOT = original_root
+            written = sorted(out.glob('*.md'))
+            self.assertTrue(written)
+            for page in written:
+                self.assertIn('## Frequently asked questions', page.read_text(), page.name)
+
+    def test_page_faq_is_built_from_that_page(self):
+        # Counts and the quoted signature must come from the page's own data.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / 'repo'
+            (root / 'src').mkdir(parents=True)
+            (root / 'src' / 'foo.c').write_text('int alpha(int x) { return x; }\nint beta(void) { return 0; }\n')
+            out = Path(temp) / 'out'
+            original_root = g.ROOT
+            g.ROOT = root
+            try:
+                g.generate(out, ['src/foo.c'], 'abc')
+            finally:
+                g.ROOT = original_root
+            text = (out / 'src-0001.md').read_text()
+            self.assertIn('lists 2 definitions', text)
+            self.assertIn('int alpha(int x)', text)
+            self.assertIn('2 of the 2 entries on this page are in that state', text)
+
+    def test_faq_snippet_cannot_break_the_code_fence(self):
+        # A backtick in a captured signature must not terminate the fenced block early.
+        block = g.code_block('int a`b(int x)')
+        self.assertEqual(block.count('```'), 2)
+        self.assertNotIn('`b', block)
+
+
 if __name__ == '__main__':
     unittest.main()
