@@ -10,6 +10,7 @@ module.exports = {
   projectName,
   onBrokenLinks: 'throw',
   onBrokenMarkdownLinks: 'throw',
+  onBrokenAnchors: 'throw',
   presets: [['classic', {docs: {sidebarPath: require.resolve('./sidebars.js'), routeBasePath: '/'}, blog: false, theme: {customCss: require.resolve('./src/css/custom.css')}}]],
   themeConfig: {navbar: {title: 'NEONT 5', items: [{to: '/', label: 'Guide', position: 'left'}, {to: '/reference/', label: 'Function index', position: 'left'}, {href: `https://github.com/${repo}`, label: 'GitHub', position: 'right'}]}, footer: {style: 'dark', copyright: 'NEONT 5 source documentation'}}
 };

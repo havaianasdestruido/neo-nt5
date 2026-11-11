@@ -101,6 +101,119 @@ def inline(value):
     return f'{fence} {value} {fence}'
 
 
+def code_block(value, language='c'):
+    """Render a quoted snippet as a fenced block. Backticks are neutralized so the fence cannot close early."""
+    body = ' '.join(str(value).split()).replace('`', "'")[:600] or '(no signature captured)'
+    return f'```{language}\n{body}\n```'
+
+
+def page_faq(bucket, part, stats):
+    """FAQ for one generated function-index page, built from that page's own extracted data."""
+    name, path, line, signature = stats['first'] or ('', '', 0, '')
+    total, dupes, tested = stats['count'], stats['variants'], stats['tests']
+    untested = total - tested
+    dupe_text = (f'{dupes} of the {total} entries on this page share a name with another extracted '
+                 'definition elsewhere in the tree.' if dupes else
+                 'No entry on this page shares its name with another extracted definition in the tree.')
+    return (
+        '## Frequently asked questions\n\n'
+        f'### What does this page show?\n\n'
+        f'Function definitions extracted from tracked C, C++ and Python files under `{bucket}/`, '
+        f'page {part} of that tree. This page lists {total} definitions, each with a source link, the '
+        f'signature as written, a same-name comparison, and any syntactic calls found in test-named '
+        f'files. Nothing here is inferred behavior.\n\n'
+        '### How was the signature captured?\n\n'
+        'Everything from the start of the definition up to the opening brace of its body, with '
+        'whitespace collapsed and a 600-character cap. It is a quotation of the source text, not a '
+        'normalized prototype, so macros, `IN`/`OUT` annotations and comments survive. Much of this '
+        'tree writes its routine-description comment *between* the parameter list and the body, so '
+        'that comment is part of the captured text and can be cut off by the cap. The first entry '
+        f'on this page ({inline(name)}, {inline(path)}:{line}) was captured as:\n\n'
+        f'{code_block(signature)}\n\n'
+        '### Why do some names appear more than once?\n\n'
+        f'{dupe_text} The comparison is by name only: C++ qualified names are reduced to their leaf, '
+        'and unrelated functions in different projects can share a name. The listed body hashes tell '
+        'you whether the *text* differs; identical text still does not prove identical behavior once '
+        'macros, includes and build configuration differ.\n\n'
+        '### Why does an entry say "No matching call found in test-named files."?\n\n'
+        'Because no call expression with that leaf name was found in a file whose *path* contains a '
+        f'test-related segment. {untested} of the {total} entries on this page are in that state. The '
+        'detection is deliberately conservative and misses tests that are not in test-named paths, so '
+        'this line describes the index rather than the code:\n\n'
+        '```python\n'
+        "# documentation/scripts/generate.py\n"
+        "TEST_PATH = re.compile(r'(^|[/_.-])(tests?|testing|unittests?|testcases?)([/_.-]|$)', re.I)\n"
+        "bool(TEST_PATH.search('base/ntos/se/utaccess.c'))  # False, though it is a unit test\n"
+        '```\n\n'
+        '### How do I get from an entry to the real answer?\n\n'
+        'Follow the source link and read the definition and its callers; follow the test links and '
+        'read the assertions and setup. The index does not preprocess C/C++, resolve symbols, analyze '
+        'assembly or other languages, execute anything, or explain what a function does. See the '
+        '[coverage report](coverage) for what could not be analyzed.\n'
+    )
+
+
+def index_faq(scanned, total, calls_count, errors, failed, page_count, revision):
+    return (
+        '## Frequently asked questions\n\n'
+        '### What exactly was scanned?\n\n'
+        f'{scanned:,} tracked files whose extension is one of `.c .h .cpp .cxx .cc .hpp .hxx .py`, '
+        f'yielding {total:,} definitions and {calls_count:,} call expressions inside test-named files. '
+        f'{errors:,} C/C++ files parsed with errors and {failed:,} could not be parsed at all. Headers '
+        'are parsed with the C++ grammar. Assembly, resource scripts, IDL, batch files and every other '
+        'language are not indexed.\n\n'
+        '### Why is the index not committed to Git?\n\n'
+        'Because it is derived output. `documentation/.gitignore` excludes `site/docs/reference/`, and '
+        'the generator deletes the Markdown files in its own output directory before writing, so a '
+        'narrow regeneration never leaves stale pages behind:\n\n'
+        '```python\n'
+        '# documentation/scripts/generate.py\n'
+        "for old in output.glob('*.md'):\n"
+        '    old.unlink()\n'
+        '```\n\n'
+        '### Which revision do the source links point at?\n\n'
+        f'This run used {inline(revision)}. The value comes from `GITHUB_SHA` in the Pages workflow, '
+        'or from `git rev-parse HEAD` locally, and can be overridden with `--revision`. A locally '
+        'generated page therefore links to the last commit, so uncommitted changes will not appear at '
+        'their links.\n\n'
+        f'### How are the {page_count:,} pages split?\n\n'
+        'First by top-level tree — the part of the path before the first `/` — then into pages of at '
+        'most 300 entries each, ordered by path and line. That keeps any one page small enough to open '
+        'while keeping every definition reachable from a stable filename.\n\n'
+        '### Can I trust a "Variants" line as proof of duplication?\n\n'
+        'No. It reports how many extracted definitions share a name and how many distinct body hashes '
+        'they have. A body hash is a SHA-256 of the body text, so whitespace and comment changes alter '
+        'it, and two semantically identical bodies written differently hash differently. It is a lead '
+        'for reading code, not a behavioral comparison.\n'
+    )
+
+
+def coverage_faq(errors, failed):
+    return (
+        '\n## Frequently asked questions\n\n'
+        '### Are the listed files simply broken?\n\n'
+        'Not necessarily. A C/C++ file can fail to parse here because it depends on the preprocessor, '
+        'on a compiler extension, or on a legacy construct the grammar does not accept — and still '
+        'compile correctly in its own build. Partial results are kept for those files.\n\n'
+        '### Why are Python failures different?\n\n'
+        'A Python file is parsed with the standard `ast` module, which is exact: a syntax error yields '
+        'no results at all rather than partial ones. That is why the two lists are reported '
+        'separately.\n\n'
+        '### Does an empty list mean the index is complete?\n\n'
+        'No. Only files the generator attempted and failed on appear here. Files it never attempts — '
+        'assembly, `.idl`, `.rc`, batch files, and anything under `documentation/` or `agents/` — are '
+        'absent from both lists and from the index:\n\n'
+        '```python\n'
+        '# documentation/scripts/generate.py\n'
+        "if path.startswith(('documentation/', 'agents/')):\n"
+        '    continue\n'
+        '```\n\n'
+        f'This run recorded {errors:,} C/C++ files with parse errors and {failed:,} files that could '
+        'not be parsed.\n'
+    )
+
+
+
 def generate(output, paths, revision):
     output.mkdir(parents=True, exist_ok=True)
     # No stale pages on a regeneration. Only remove our own generated Markdown.
@@ -151,15 +264,17 @@ def generate(output, paths, revision):
             rows = db.execute("SELECT name,path,line,signature,hash FROM defs WHERE (CASE WHEN instr(path, '/') > 0 THEN substr(path, 1, instr(path, '/') - 1) ELSE 'root' END)=? ORDER BY path,line,name", (bucket,))
             page = []
             part = 0
+            stats = {'count': 0, 'variants': 0, 'tests': 0, 'first': None}
             def flush():
-                nonlocal part, page
+                nonlocal part, page, stats
                 if not page: return
                 part += 1
                 filename = f'{bucket.lower()}-{part:04d}.md'
                 title = f'{bucket} functions · {part}'
-                (output / filename).write_text('---\ntitle: ' + title + '\nsidebar_position: 2\n---\n\n' + '\n'.join(page), encoding='utf-8')
+                (output / filename).write_text('---\ntitle: ' + title + '\nsidebar_position: 91\n---\n\n' + '\n'.join(page) + '\n' + page_faq(bucket, part, stats), encoding='utf-8')
                 pages.append((title, filename[:-3]))
                 page = []
+                stats = {'count': 0, 'variants': 0, 'tests': 0, 'first': None}
             for name, path, line, signature, digest in rows:
                 # C++ qualified names are compared by leaf name, so the association is intentionally conservative.
                 leaf = name.split('::')[-1]
@@ -169,19 +284,25 @@ def generate(output, paths, revision):
                 if test_total > len(tests): test_text += f' (showing {len(tests)} of {test_total})'
                 difference = (f'{variants[0]} definitions with this exact name; {variants[1]} distinct body hashes. '
                               'Different hashes indicate text differences, not necessarily different behavior.' if variants[0] > 1 else 'No other extracted definition with this exact name.')
+                stats['count'] += 1
+                if stats['first'] is None: stats['first'] = (name, path, line, signature)
+                if variants[0] > 1: stats['variants'] += 1
+                if tests: stats['tests'] += 1
                 page.append(f'## {inline(name)}\n\n- Source: [{inline(path)}:{line}]({source_link(path,line,revision)})\n- Signature: {inline(signature)}\n- Implementation: inspect the linked definition and body; this index does not infer runtime behavior.\n- Variants: {difference}\n- Test evidence: {test_text}\n')
                 if len(page) >= 300: flush()
             flush()
-        summary = (f'---\ntitle: Generated function index\nsidebar_position: 1\n---\n\n'
+        summary = (f'---\ntitle: Generated function index\nsidebar_position: 90\n---\n\n'
                    f'Source revision: {inline(revision)}. Scanned {scanned:,} supported files; found {total:,} definitions and {calls_count:,} syntactic calls in test-named files. '
                    f'{len(errors):,} C/C++ files had parse errors; {len(failed):,} files could not be parsed. See the [coverage report](coverage).\n\n'
                    'This is a syntactic inventory, not proof of behavior or coverage. Test matches are by unqualified name, may be unrelated, and do not show execution or assertions. '
                    'Definitions can be missed by macros, conditional compilation, parser errors, or unsupported languages. Body hashes compare text, not semantics. '
-                   'Follow source links to understand control flow, configuration and actual test assertions.\n\n## Browse\n\n' + ''.join(f'- [{title}]({slug})\n' for title, slug in pages))
+                   'Follow source links to understand control flow, configuration and actual test assertions.\n\n## Browse\n\n' + ''.join(f'- [{title}]({slug})\n' for title, slug in pages) + '\n' +
+                   index_faq(scanned, total, calls_count, len(errors), len(failed), len(pages), revision))
         (output / 'index.md').write_text(summary, encoding='utf-8')
-        report = '---\ntitle: Extraction coverage\n---\n\nC/C++ parse errors may still yield partial results. Python syntax errors yield no results. Headers are parsed as C++. Only C, C++ and Python definitions are indexed; assembly, scripts and other languages are not. Preprocessing, generated code, declarations without bodies and dynamic calls are not resolved. The documentation and agent directories are excluded to prevent self-indexing. Test files are identified by test-related path segments, not execution metadata.\n\n'
+        report = '---\ntitle: Extraction coverage\nsidebar_position: 92\n---\n\nC/C++ parse errors may still yield partial results. Python syntax errors yield no results. Headers are parsed as C++. Only C, C++ and Python definitions are indexed; assembly, scripts and other languages are not. Preprocessing, generated code, declarations without bodies and dynamic calls are not resolved. The documentation and agent directories are excluded to prevent self-indexing. Test files are identified by test-related path segments, not execution metadata.\n\n'
         report += '## C/C++ files with parse errors\n\n' + (''.join(f'- [{inline(p)}]({REPO}/blob/{quote(revision, safe="")}/{quote(p, safe="/")})\n' for p in errors) or 'None.\n')
         report += '\n## Files that could not be parsed\n\n' + (''.join(f'- {inline(p)}: {inline(e)}\n' for p,e in failed) or 'None.\n')
+        report += coverage_faq(len(errors), len(failed))
         (output / 'coverage.md').write_text(report, encoding='utf-8')
         print(f'Scanned {scanned} files, {total} definitions, {calls_count} test calls, {len(errors)} partial parses, {len(failed)} failures; wrote {len(pages)} pages.')
 
