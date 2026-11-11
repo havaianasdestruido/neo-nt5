@@ -12,6 +12,7 @@
 #include <ntddmou.h>
 
 #include "ptdrvcom.h"
+#include <mcsioctl.h>
 
 
 #define min(a,b)            (((a) < (b)) ? (a) : (b))
@@ -1899,6 +1900,19 @@ NTSTATUS IcaBindVirtualChannels(IN PICA_STACK pStack)
                     pSdVcBind->VirtualName, pSdVcBind->VirtualClass, pSdVcBind->Flags));
 
             /*
+             * Security fix (NT-AUDIT-007 / U-01 / CVE-2019-0708):
+             * Validate that provider VirtualClass is in range [0, VIRTUAL_MAXIMUM).
+             * Enforce the MS_T120 invariant: MS_T120 must only be bound to channel 31 (Virtual_T120ChannelNum).
+             */
+            if (pSdVcBind->VirtualClass < 0 || pSdVcBind->VirtualClass >= VIRTUAL_MAXIMUM) {
+                continue;
+            }
+            if (!_stricmp(pSdVcBind->VirtualName, Virtual_T120) &&
+                pSdVcBind->VirtualClass != Virtual_T120ChannelNum) {
+                continue;
+            }
+
+            /*
              *  Locate virtual class binding
              */
             VirtualClass = _IcaFindVcBind(pConnect, pSdVcBind->VirtualName, &Flags);
@@ -2295,16 +2309,37 @@ VOID _IcaBindChannel(
             "TermDD: _IcaBindChannel: cc %u, vn %s vc %d\n",
             ChannelClass, pChannel->VirtualName, VirtualClass ));
 
+    IcaLockChannelTable(pChannel->pChannelTableLock);
+
+    //
+    // Security fix (NT-AUDIT-007 / CVE-2019-0708):
+    // If the channel was previously bound to another slot, clear that slot
+    // to prevent dangling references and Use-After-Free (CWE-416) on teardown.
+    //
+    if (pChannel->VirtualClass != UNBOUND_CHANNEL &&
+        (pChannel->ChannelClass != ChannelClass || pChannel->VirtualClass != VirtualClass)) {
+        if (pChannel->pConnect->pChannel[pChannel->ChannelClass + pChannel->VirtualClass] == pChannel) {
+            pChannel->pConnect->pChannel[pChannel->ChannelClass + pChannel->VirtualClass] = NULL;
+        }
+    }
+
     pChannel->ChannelClass = ChannelClass;
     pChannel->VirtualClass = VirtualClass;
-    IcaLockChannelTable(pChannel->pChannelTableLock);  
 
     if (Flags & SD_CHANNEL_FLAG_SHADOW_PERSISTENT)
         pChannel->Flags |= CHANNEL_SHADOW_PERSISTENT;
 
     if (VirtualClass != UNBOUND_CHANNEL) {
-        ASSERT(pChannel->pConnect->pChannel[ChannelClass + VirtualClass] == NULL);
-        pChannel->pConnect->pChannel[ChannelClass + VirtualClass] = pChannel;
+        //
+        // Security note (U-01): Validate VirtualClass index within bounds (CWE-122).
+        //
+        if (ChannelClass < Channel_Virtual ||
+            (VirtualClass >= 0 && VirtualClass < VIRTUAL_MAXIMUM)) {
+            ASSERT(pChannel->pConnect->pChannel[ChannelClass + VirtualClass] == NULL);
+            pChannel->pConnect->pChannel[ChannelClass + VirtualClass] = pChannel;
+        } else {
+            pChannel->VirtualClass = UNBOUND_CHANNEL;
+        }
     }
     IcaUnlockChannelTable(pChannel->pChannelTableLock);  
 }
