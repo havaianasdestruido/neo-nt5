@@ -1,7 +1,7 @@
 ---
 title: Architecture and runtime boundaries
 sidebar_position: 2
-description: Boot chain, kernel and user mode, the executive managers, Win32k, and how engineering trees map onto runtime layers.
+description: Boot chain, kernel and user mode, the executive managers, Win32k, one call through all layers, and how engineering trees map onto runtime layers.
 ---
 
 The tree is partitioned mainly by **engineering project**, not by a strict layered package manager.
@@ -28,12 +28,52 @@ This is a **navigation model**, not the precise boot order and not a dependency 
 organised by project as well as by layer: Win32 crosses `base/`, `windows/`, `shell/` and `ds/`;
 networking crosses `net/`, `drivers/` and `base/fs/`.
 
+## One call through every layer
+
+The fastest way to internalise the architecture is to follow a single documented API from the
+application to the hardware. `CreateFileW`'s public contract:
+
+```cpp
+HANDLE CreateFileW(
+  [in]           LPCWSTR               lpFileName,
+  [in]           DWORD                 dwDesiredAccess,
+  [in]           DWORD                 dwShareMode,
+  [in, optional] LPSECURITY_ATTRIBUTES lpSecurityAttributes,
+  [in]           DWORD                 dwCreationDisposition,
+  [in]           DWORD                 dwFlagsAndAttributes,
+  [in, optional] HANDLE                hTemplateFile
+);
+```
+
+— [CreateFileW function (fileapi.h), Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew)
+
+and the route it takes through this source tree:
+
+```text
+application
+  -> kernel32   CreateFileW                 base/win32/client/fileopcr.c:5371
+  -> ntdll      NtCreateFile stub           generated from base/ntos/ke/services.tab
+  -> kernel     NtCreateFile                base/ntos/io/iomgr/create.c:37
+  -> IRP_MJ_CREATE down the stack           base/ntos/io/iomgr/iosubs.c (IofCallDriver)
+  -> filesystem NtfsFsdCreate               base/fs/ntfs/create.c:633
+  -> volume     class/port drivers          drivers/storage/{classpnp,disk,scsiport,...}
+  -> hardware   miniport / port driver
+```
+
+Each arrow is a project boundary with its own `dirs`/`sources` build node. The layers where the
+open can *fail* are the bottom three; the layer that can make the call *wrong* (path translation,
+disposition mapping, ANSI/Unicode) is the top one. Details and the `NtCreateFile` parameter tables
+are in [I/O, file systems and storage](/io-storage); the system-call mechanics are in
+[The native API](/native-api).
+
 ## Boot and kernel start-up
 
 `base/boot/` contains `bootcode`, `bldr`, `detect`, `efi`, `startrom`, `tftplib`, `oschoice`,
 `setup`, `kdcom` and `kd1394` — boot sectors, the loader, hardware detection, the EFI path, network
 boot and the boot-time transports for the kernel debugger. Architecture-specific and language
-folders underneath are variants, not separate operating systems.
+folders underneath are variants, not separate operating systems. The loader sources themselves are
+in `base/boot/bldr` (`advboot.c`, `bootstat.c`, `bldrint.h`, plus per-language build nodes such as
+`daytona/`, `br/`, `chs/` that each produce an `osloader`).
 
 The kernel is assembled from `base/ntos/`, whose own `dirs` fixes the traversal order of the
 executive:
@@ -138,9 +178,17 @@ NtCreateFile(
     )
 ```
 
+The stubs are **generated at build time**: `base/ntos/ke/services.tab` lists every service with its
+argument-byte count, `gensrv` turns it into the `ntdll` stubs and the kernel's `KiServiceTable`, and
+`int 2Eh` / `SYSENTER` land in `KiSystemService` in `base/ntos/ke/i386/trap.asm`. The full mechanism,
+with the generator's macro files, is documented in
+[The native API](/native-api) and in
+[Kernel and executive](/kernel#how-an-nt-call-reaches-the-manager).
+
 The first user-mode processes come from `base/subsys/sm` (the session manager) and
 `base/subsys/csr` (the client/server runtime subsystem); `base/subsys/posix` holds the POSIX
-subsystem. Service control infrastructure is in `base/screg/sc`.
+subsystem. Service control infrastructure is in `base/screg/sc` — and the registry client DLL
+(`advapi32`'s `Reg*` functions) is `base/screg/winreg/client`.
 
 ## Win32k is not ntos
 
@@ -151,7 +199,7 @@ kernel-mode half of Win32.** They are different projects with different build de
 | --- | --- |
 | `windows/core/ntuser` | Kernel-mode USER: windowing, input, the desktop |
 | `windows/core/ntgdi` | Kernel-mode GDI |
-| `windows/core/kmode` | Kernel-mode support for the above |
+| `windows/core/kmode` | The win32k service table and shared kmode pieces |
 | `windows/core/umode` | User-mode side (user32/gdi32 and friends) |
 | `windows/core/winsrv` | The CSRSS server DLL for the Windows subsystem |
 | `windows/core/dxkernel` | DirectX kernel support |
@@ -159,7 +207,9 @@ kernel-mode half of Win32.** They are different projects with different build de
 
 A window-manager change belongs in `windows/core/ntuser`; a handle-table change belongs in
 `base/ntos/ob`. The user-mode Win32 implementations are split between
-`base/win32/client` (kernel32-style APIs) and `windows/core/umode`.
+`base/win32/client` (kernel32-style APIs) and `windows/core/umode`. The two kernels share one ABI —
+the export list in `base/ntos/init/w32kexps.txt` and the second service table described in
+[Win32, windowing and the shell](/win32-shell#the-win32k-service-table).
 
 ## Cross-cutting planes
 
@@ -187,6 +237,31 @@ variants that matter most in this tree:
 
 A directory name alone does not prove the variant is supported in this snapshot. Read the `sources`
 file and the `!IF` guards before asserting a target exists.
+
+## References
+
+Official Microsoft documentation for the concepts on this page:
+
+| Topic | Official documentation |
+| --- | --- |
+| `CreateFileW` | [https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew) |
+| `NtCreateFile` (user-mode view) | [https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntcreatefile](https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntcreatefile) |
+| System boot and the loader | [https://learn.microsoft.com/en-us/windows-hardware/drivers/bringup/boot-process](https://learn.microsoft.com/en-us/windows-hardware/drivers/bringup/boot-process) |
+| Windows kernel-mode drivers | [https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/](https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/) |
+| Windows drivers reference (wdm.h) | [https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/) |
+| Processes and threads (user-mode) | [https://learn.microsoft.com/en-us/windows/win32/procthread/processes-and-threads](https://learn.microsoft.com/en-us/windows/win32/procthread/processes-and-threads) |
+| Wow64 | [https://learn.microsoft.com/en-us/windows/win32/winprog64/running-32-bit-applications](https://learn.microsoft.com/en-us/windows/win32/winprog64/running-32-bit-applications) |
+| Windows architecture (presentation + docs) | [https://learn.microsoft.com/en-us/windows/win32/learnwin32/learn-to-program-for-windows](https://learn.microsoft.com/en-us/windows/win32/learnwin32/learn-to-program-for-windows) |
+
+In-tree anchors for this page:
+
+| File | Why |
+| --- | --- |
+| [`base/ntos/init/init.c`](https://github.com/havaianasdestruido/neo-nt5/blob/main/base/ntos/init/init.c) | `ExpInitializeExecutive` (611), `Phase1Initialization` (1394) |
+| [`base/ntos/ke/services.tab`](https://github.com/havaianasdestruido/neo-nt5/blob/main/base/ntos/ke/services.tab) | The native service list |
+| [`windows/core/kmode/services.tab`](https://github.com/havaianasdestruido/neo-nt5/blob/main/windows/core/kmode/services.tab) | The win32k service list |
+| [`base/ntos/init/w32kexps.txt`](https://github.com/havaianasdestruido/neo-nt5/blob/main/base/ntos/init/w32kexps.txt) | The kernel→win32k ABI |
+| [`base/ntos/dirs`](https://github.com/havaianasdestruido/neo-nt5/blob/main/base/ntos/dirs) | The executive build traversal |
 
 ## Frequently asked questions
 
@@ -259,3 +334,10 @@ the owner of a change. The authoritative order lives in the loader (`base/boot/b
 `ExpInitializeExecutive` and `Phase1Initialization` in `base/ntos/init/init.c`, and in the service
 start order recorded in the registry hives and INFs under `base/ntsetup`. Read those before
 asserting an ordering.
+
+### Q: How many system services and windowing services does this build define?
+
+284 native services in `base/ntos/ke/services.tab` and 750 win32k entries in
+`windows/core/kmode/services.tab`, both counted as the checked-in files stand. Those lists *are* the
+ABI for this source; anything published elsewhere describes a different build. See
+[The native API](/native-api).

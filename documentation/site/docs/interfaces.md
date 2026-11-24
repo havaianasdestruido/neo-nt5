@@ -1,7 +1,7 @@
 ---
 title: Interfaces and cross-project contracts
 sidebar_position: 9
-description: Public, published and private headers, IDL and RPC, WMI schemas, INFs, and how to trace both sides of a contract before changing one.
+description: Public, published and private headers, IDL and RPC with wire-level attribute semantics, WMI schemas, INFs, version resources, and how to trace both sides of a contract before changing one.
 ---
 
 A change in this tree often crosses a build or runtime boundary even when only one source file looks
@@ -24,6 +24,12 @@ where contracts live so you can find **both sides** before editing either.
 Path macros for all of these are defined once in
 [`tools/projects.inc`](https://github.com/havaianasdestruido/neo-nt5/blob/main/tools/projects.inc),
 so a `sources` file refers to `$(BASE_LIB_PATH)` rather than to a directory.
+
+The header families are also *ABI* families. `public/sdk/inc` is what applications compile against
+(`windows.h`, `winsock2.h`, `winternl.h`); `public/ddk/inc/wdm/wdm.h` is the kernel contract drivers
+compile against — every `Io*` macro quoted in
+[I/O, file systems and storage](/io-storage#the-irp-lifecycle) comes from that one file. When a
+macro changes there, every driver in the tree changes with it.
 
 ### The `.w` publication convention
 
@@ -96,13 +102,30 @@ void nsi_binding_lookup_begin
     );
 ```
 
-Every attribute there is a compatibility decision: the `uuid` identifies the interface on the wire,
-`version` gates negotiation, `pointer_default(unique)` sets null-handling semantics for every pointer
-that does not state its own, and `ndr64` means the same IDL marshals differently on 64-bit — which is
-why the tree carries two NDR engines.
+Every attribute there is a compatibility decision. The table below is the checklist to run against
+any IDL diff in this tree — each row is a wire-format question, and the official MIDL reference is
+[MIDL language reference](https://learn.microsoft.com/en-us/windows/win32/midl/midl-start-page):
+
+| Attribute | What it fixes | Changing it breaks |
+| --- | --- | --- |
+| `uuid(...)` | The interface identity on the wire | Everything — old clients bind to the old IID |
+| `version(maj.min)` | Negotiation between stubs | Mixed-version client/server pairs |
+| `pointer_default(unique)` | Null semantics of every unannotated pointer | Marshalling of all pointer parameters |
+| `[in]` / `[out]` / `[in, out]` | Which direction is copied | Stub buffer sizing; silent data loss |
+| `[unique]` / `[ref]` / `[ptr]` | Aliasing and nullability | NDR layout of the pointer graph |
+| `[string]` | NUL-terminated vs counted arrays | The wire encoding of the buffer |
+| `[size_is]` / `[length_is]` / `[switch_is]` | Conformant/varying arrays, unions | The count prefix on the wire |
+| `handle_t` / explicit handles | Binding and authentication | Which connection the call travels on |
 
 Build order matters for IDL. `com/dirs` warns that IDL projects must be traversed early because
-everything else consumes their generated headers.
+everything else consumes their generated headers. And because `com/rpc/ndr20` and `com/rpc/ndr64`
+are separate marshalling engines, the *same* IDL marshals differently on 32-bit and 64-bit — which
+is why the tree carries both and why a change must be validated against both.
+
+The official references for the machinery: the
+[MIDL compiler](https://learn.microsoft.com/en-us/windows/win32/midl/midl-compiler-options) and
+[RPC](https://learn.microsoft.com/en-us/windows/win32/rpc/rpc-start-page) sections of Microsoft
+Learn.
 
 ## WMI and management schemas
 
@@ -132,7 +155,10 @@ registration, and the consumer's query. `ndis.sys` even carries its own schema a
 `net/ndis/sys/ndis.mof`, so a change to NDIS-managed properties is a schema change.
 
 Relevant locations: `base/wmi`, `admin/wmi/wbem`, `admin/wmiprov`, `mergedcomponents/wmistub`, and
-per-project `mof` files.
+per-project `mof` files. The kernel-side registration entry points are documented at
+[WMI library routines](https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/wmi-library-routines);
+the MOF syntax itself at
+[Managed object format (MOF) syntax](https://learn.microsoft.com/en-us/windows/win32/wmisdk/mof-syntax).
 
 ## Installation and registration contracts
 
@@ -157,7 +183,62 @@ WindowTitle=Windows NT Server Setup -- Installing DNS Server
 ```
 
 Useful locations: `base/ntsetup/inf`, `mergedcomponents/setupinfs`, per-project `setup` and `sld`
-folders, and `tools/postbuildscripts`.
+folders, and `tools/postbuildscripts`. INF section syntax is documented at
+[INF files](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/inf-files) in the
+WDK; SetupAPI's role in consuming them is
+[SetupAPI](https://learn.microsoft.com/en-us/windows/win32/setupapi/setupapi-start-page) (the
+implementation is `base/pnp/setupapi` — see
+[I/O, file systems and storage](/io-storage#plug-and-play-and-setup)).
+
+Version resources are contracts too: each DLL carries an `.rcv` fragment (for example
+`shell/explorer/explorer.rcv` next to `explorer.rc`) whose values come from
+`public/sdk/inc/ntverp.h` — see [Build, package and release](/build#version-and-build-number-targets).
+
+## COM identity
+
+A COM class that builds but is not registered is not creatable. The registration descriptors live in
+`componentdef` directories (65 tracked paths) and `mergedcomponents/uuid/` holds UUID generation for
+merged components. `com/ole32` is the runtime — `CoCreateInstance` itself is
+[`com/ole32/com/objact/actapi.cxx:89`](https://github.com/havaianasdestruido/neo-nt5/blob/main/com/ole32/com/objact/actapi.cxx):
+
+```c
+STDAPI CoCreateInstance(
+    REFCLSID rclsid,
+    LPUNKNOWN pUnkOuter,
+    DWORD dwContext,
+    REFIID riid,
+    LPVOID * ppv)
+```
+
+The official contract:
+[CoCreateInstance function (combaseapi.h)](https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-cocreateinstance).
+If your change adds a CLSID, an IID or a provider identity, the registration has to land in the
+component's `componentdef` or the object will build and still not be creatable.
+
+## References
+
+Official Microsoft documentation for the contract types on this page:
+
+| Topic | Official documentation |
+| --- | --- |
+| MIDL language reference | [https://learn.microsoft.com/en-us/windows/win32/midl/midl-start-page](https://learn.microsoft.com/en-us/windows/win32/midl/midl-start-page) |
+| RPC | [https://learn.microsoft.com/en-us/windows/win32/rpc/rpc-start-page](https://learn.microsoft.com/en-us/windows/win32/rpc/rpc-start-page) |
+| MOF syntax | [https://learn.microsoft.com/en-us/windows/win32/wmisdk/mof-syntax](https://learn.microsoft.com/en-us/windows/win32/wmisdk/mof-syntax) |
+| WMI kernel library | [https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/wmi-library-routines](https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/wmi-library-routines) |
+| INF files (WDK) | [https://learn.microsoft.com/en-us/windows-hardware/drivers/install/inf-files](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/inf-files) |
+| SetupAPI | [https://learn.microsoft.com/en-us/windows/win32/setupapi/setupapi-start-page](https://learn.microsoft.com/en-us/windows/win32/setupapi/setupapi-start-page) |
+| `CoCreateInstance` | [https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-cocreateinstance](https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-cocreateinstance) |
+| Header files (SDK/DDK split) | [https://learn.microsoft.com/en-us/windows/win32/apiindex/windows-apis](https://learn.microsoft.com/en-us/windows/win32/apiindex/windows-apis) |
+
+In-tree anchors:
+
+| File | Why |
+| --- | --- |
+| [`tools/projects.inc`](https://github.com/havaianasdestruido/neo-nt5/blob/main/tools/projects.inc) | Every publication path macro |
+| [`com/rpc/locator/idl/nsiclt.idl`](https://github.com/havaianasdestruido/neo-nt5/blob/main/com/rpc/locator/idl/nsiclt.idl) | A real annotated interface |
+| [`net/published/inc/afd.w`](https://github.com/havaianasdestruido/neo-nt5/blob/main/net/published/inc/afd.w) | The `.w` convention |
+| [`com/ole32/com/objact/actapi.cxx`](https://github.com/havaianasdestruido/neo-nt5/blob/main/com/ole32/com/objact/actapi.cxx) | COM activation |
+| [`public/sdk/inc/ntverp.h`](https://github.com/havaianasdestruido/neo-nt5/blob/main/public/sdk/inc/ntverp.h) | Version resource source |
 
 ## Frequently asked questions
 
@@ -203,7 +284,8 @@ pointer_default (unique)
 Adding a parameter changes the stub/signature pair. Changing `[in]` to `[out]`, adding `[unique]`
 where the default was implicit, or reordering parameters all break marshalling. And because
 `com/rpc/ndr20` and `com/rpc/ndr64` are separate engines, a change can behave differently on 32-bit
-and 64-bit. Rebuild both clients and servers, and check the generated headers.
+and 64-bit. Rebuild both clients and servers, and check the generated headers. The attribute
+checklist in the IDL section above is the short version of this answer.
 
 ### Q: What is `componentdef`, and do I need to touch it?
 

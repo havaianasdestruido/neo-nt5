@@ -1,7 +1,7 @@
 ---
 title: Networking stack
 sidebar_position: 6
-description: NDIS miniports, the TCP/IP driver, TDI, Winsock and AFD, plus the network services and the in-tree locking documentation.
+description: NDIS miniports, the TCP/IP driver, TDI, Winsock and AFD with verified ws2_32 entry points, the network services, the in-tree locking documentation, and the official Winsock/NDIS references.
 ---
 
 Networking in this tree spans four projects, and the boundaries between them are contractual:
@@ -30,6 +30,47 @@ application / server role  (inetsrv/iis, inetcore/wininet, an app)
 `layer2svc`, `diagnostics`, plus the naming services `netbt` and `netbios`. Legacy transports coexist
 in this historical tree — their presence does not mean every one is on the default path.
 
+## Winsock: the user-mode surface in this tree
+
+`ws2_32` is built from `net/sockets/winsock2/ws2_32/src/`, and each socket verb has its file. Verified
+definition locations in this checkout:
+
+| API | Definition | Official documentation |
+| --- | --- | --- |
+| `WSAStartup` | [`net/sockets/winsock2/ws2_32/src/startup.cpp:112`](https://github.com/havaianasdestruido/neo-nt5/blob/main/net/sockets/winsock2/ws2_32/src/startup.cpp) | [nf-winsock2-wsastartup](https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsastartup) |
+| `WSASocketW` | [`net/sockets/winsock2/ws2_32/src/socklife.cpp:117`](https://github.com/havaianasdestruido/neo-nt5/blob/main/net/sockets/winsock2/ws2_32/src/socklife.cpp) | [nf-winsock2-wsasocketw](https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsasocketw) |
+| `WSAConnect` | [`net/sockets/winsock2/ws2_32/src/sockctrl.cpp:693`](https://github.com/havaianasdestruido/neo-nt5/blob/main/net/sockets/winsock2/ws2_32/src/sockctrl.cpp) | [nf-winsock2-wsaconnect](https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsaconnect) |
+| `send` | [`net/sockets/winsock2/ws2_32/src/send.cpp:41`](https://github.com/havaianasdestruido/neo-nt5/blob/main/net/sockets/winsock2/ws2_32/src/send.cpp) | [nf-winsock2-send](https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-send) |
+| `sendto` | `net/sockets/winsock2/ws2_32/src/send.cpp:116` | [nf-winsock2-sendto](https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-sendto) |
+| `WSASend` | `net/sockets/winsock2/ws2_32/src/send.cpp:198` | [nf-winsock2-wsasend](https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsasend) |
+| `recv` | `net/sockets/winsock2/ws2_32/src/recv.cpp:44` | [nf-winsock2-recv](https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-recv) |
+| `WSARecv` | `net/sockets/winsock2/ws2_32/src/recv.cpp:219` | [nf-winsock2-wsarecv](https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsarecv) |
+
+The `WSASocketW` definition shows the in-tree style — a thin wrapper whose routine comment *is* the
+contract:
+
+```c
+// net/sockets/winsock2/ws2_32/src/socklife.cpp:117
+WSASocketW (
+    IN int af,
+    IN int type,
+    IN int protocol,
+    IN LPWSAPROTOCOL_INFOW lpProtocolInfo,
+    IN GROUP g,
+    IN DWORD dwFlags)
+/*++
+Routine Description:
+
+    Create  a  socket  which is bound to a specific transport service provider,
+    optionally create and/or join a socket group.
+```
+
+The official page for `WSASocketW` documents what the wrapper must preserve: `lpProtocolInfo` lets a
+caller duplicate or redirect a socket across processes, `g` is the socket-group semantics of the
+era, and `dwFlags` carries `WSA_FLAG_OVERLAPPED` and the in-tree `WSA_FLAG_NO_HANDLE_INHERIT`
+handling. `net/sockets/winsock2/wsock32/` is the Winsock 1.1 shim over the same providers and
+`ws2help/` is the helper/name-space layer.
+
 ## NDIS: registering a miniport
 
 `ndis.sys` is built from `net/ndis/sys`, whose files are split by role: `miniport.c`, `protocol.c`,
@@ -47,9 +88,22 @@ NdisMRegisterMiniport(
 ```
 
 The `CharacteristicsLength` parameter exists so a newer wrapper can accept an older, smaller
-characteristics block — a versioning convention you must preserve when adding a field. NDIS also
-ships a WMI schema, `net/ndis/sys/ndis.mof`, so management queries over NDIS objects are a contract
-too.
+characteristics block — a versioning convention you must preserve when adding a field. The official
+documentation is at
+[NdisMRegisterMiniport function (ndis.h), Microsoft Learn](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ndis/nf-ndis-ndismregisterminiport),
+and the miniport entry-point set it describes (`MiniportInitialize`, `MiniportSend`,
+`MiniportTransferData`, `MiniportReset`, …) is the structure `MiniportCharacteristics` fills in.
+
+Other anchors in the same file and its siblings:
+
+| Routine | Location | Role |
+| --- | --- | --- |
+| `NdisMRegisterMiniport` | `net/ndis/sys/configm.c:36` | Register the driver with NDIS |
+| `NdisMRegisterDevice` | `net/ndis/sys/configm.c:418` | Create a control device object for a miniport |
+| `NdisMSendComplete` | [`net/ndis/sys/sendm.c:489`](https://github.com/havaianasdestruido/neo-nt5/blob/main/net/ndis/sys/sendm.c) | Report an async send finished — the top of the send-completion path |
+
+NDIS also ships a WMI schema, `net/ndis/sys/ndis.mof`, so management queries over NDIS objects are a
+contract too.
 
 `net/ndis/` additionally contains `samples/`, `loopback/`, `tunmp/`, `uio/` and `pnptst/` — reference
 and test miniports.
@@ -113,9 +167,26 @@ AfdSend (
     )
 ```
 
-`AfdSendDatagram` is at line 1701 in the same file. The user-mode half is
-`net/sockets/winsock2/ws2_32/` (with `wsock32/` for the Winsock 1.1 shim and `ws2help/` for the
-helper/name-space layer).
+The receive side is the mirror, at
+[`net/sockets/winsock2/wsp/afdsys/receive.c:44`](https://github.com/havaianasdestruido/neo-nt5/blob/main/net/sockets/winsock2/wsp/afdsys/receive.c):
+
+```c
+AfdReceive (
+    IN PIRP Irp,
+    IN PIO_STACK_LOCATION IrpSp
+    )
+{
+    NTSTATUS status;
+    AFD_LOCK_QUEUE_HANDLE lockHandle;
+    PAFD_ENDPOINT endpoint;
+    PAFD_CONNECTION connection;
+```
+
+`AfdCreate` is at `create.c:40` and `AfdSendDatagram` at `send.c:1701`. Every `Afd*` dispatch routine
+takes exactly the `(Irp, IrpSp)` pair — AFD is a kernel driver and its "API surface" is IRP codes,
+which is why a Winsock bug that reproduces at the `ws2_32` layer can still be an AFD IRP-handling
+bug. The user-mode half is `net/sockets/winsock2/ws2_32/` (with `wsock32/` for the Winsock 1.1 shim
+and `ws2help/` for the helper/name-space layer).
 
 ### Read the in-tree locking document first
 
@@ -149,6 +220,32 @@ Any change that takes or releases `AfdSpinLock` should be reflected in this file
 document *is* the record of which orderings are safe. A sibling
 [`registry.txt`](https://github.com/havaianasdestruido/neo-nt5/blob/main/net/sockets/winsock2/wsp/afdsys/registry.txt)
 (202 lines) documents AFD's registry parameters the same way.
+
+## References
+
+Official Microsoft documentation for the layers on this page:
+
+| Routine / topic | Official documentation |
+| --- | --- |
+| `WSAStartup` | [https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsastartup](https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsastartup) |
+| `WSASocketW` | [https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsasocketw](https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsasocketw) |
+| `send` / `recv` | [https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-send](https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-send), [https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-recv](https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-recv) |
+| `WSASend` / `WSARecv` | [https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsasend](https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsasend), [https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsarecv](https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsarecv) |
+| Winsock version negotiation | [https://learn.microsoft.com/en-us/windows/win32/winsock/initializing-winsock](https://learn.microsoft.com/en-us/windows/win32/winsock/initializing-winsock) |
+| `NdisMRegisterMiniport` | [https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ndis/nf-ndis-ndismregisterminiport](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ndis/nf-ndis-ndismregisterminiport) |
+| NDIS miniport drivers | [https://learn.microsoft.com/en-us/windows-hardware/drivers/network/ndis-miniport-drivers](https://learn.microsoft.com/en-us/windows-hardware/drivers/network/ndis-miniport-drivers) |
+| TDI transport drivers | [https://learn.microsoft.com/en-us/windows-hardware/drivers/network/tdi-transport-drivers](https://learn.microsoft.com/en-us/windows-hardware/drivers/network/tdi-transport-drivers) |
+| Winsock SPI | [https://learn.microsoft.com/en-us/windows/win32/winsock/winsock-service-provider-interface-2-2](https://learn.microsoft.com/en-us/windows/win32/winsock/winsock-service-provider-interface-2-2) |
+
+In-tree anchors:
+
+| Document / file | Why |
+| --- | --- |
+| [`net/sockets/winsock2/wsp/afdsys/spinlock.txt`](https://github.com/havaianasdestruido/neo-nt5/blob/main/net/sockets/winsock2/wsp/afdsys/spinlock.txt) | The locking contract, per function |
+| [`net/sockets/winsock2/wsp/afdsys/registry.txt`](https://github.com/havaianasdestruido/neo-nt5/blob/main/net/sockets/winsock2/wsp/afdsys/registry.txt) | AFD's registry parameters |
+| [`net/ndis/sys/configm.c`](https://github.com/havaianasdestruido/neo-nt5/blob/main/net/ndis/sys/configm.c) | Miniport registration |
+| [`net/branch-reasons-and-info.txt`](https://github.com/havaianasdestruido/neo-nt5/blob/main/net/branch-reasons-and-info.txt) | Branch history for `net/` |
+| [`net/owners.txt`](https://github.com/havaianasdestruido/neo-nt5/blob/main/net/owners.txt) | Ownership per subtree |
 
 ## Frequently asked questions
 
@@ -225,3 +322,11 @@ grep -rn "OPTIONAL_DIRS" net/*/dirs | head
 
 `net/branch-reasons-and-info.txt` and `net/owners.txt` are checked in and record ownership and
 branch history for this project — useful when a directory's status is unclear.
+
+### Q: `WSASocketW` and `socket` behave differently in my test. Where would that come from?
+
+From `net/sockets/winsock2/ws2_32/src/socklife.cpp` — the two are separate exports with separate
+setup paths, and `WSASocketW` additionally handles `lpProtocolInfo` duplication and socket groups.
+Check which export the test actually binds (`wsock32`'s `socket` is a Winsock 1.1 shim with different
+error and inheritance behaviour), then read the corresponding definition on this page's table before
+suspecting `afd`.

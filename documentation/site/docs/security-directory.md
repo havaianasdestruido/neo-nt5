@@ -1,7 +1,7 @@
 ---
 title: Security and directory services
 sidebar_position: 8
-description: Access checks in the kernel security reference monitor, tokens and auditing, LSA and authentication protocols, and the Active Directory layers.
+description: Access checks in the kernel security reference monitor with the official SeAccessCheck contract, tokens and privileges from the advapi32 source, auditing, LSA and authentication protocols, and the Active Directory layers.
 ---
 
 Security in this tree is split between **enforcement** (the kernel) and **identity** (user-mode
@@ -62,6 +62,8 @@ SeAccessCheckByType (
     )
 ```
 
+The exported wrapper is `SeAccessCheck` itself, at
+[`base/ntos/se/accessck.c:3447`](https://github.com/havaianasdestruido/neo-nt5/blob/main/base/ntos/se/accessck.c).
 All three of `SepAccessCheck`, `SeAccessCheckByType` and `SeAccessCheck` are explicitly paged, at
 `accessck.c` lines 132, 136 and 138:
 
@@ -75,6 +77,39 @@ Note what the parameters *do not* include: there is no "caller is trusted" short
 matters — descriptor, tokens, desired access, generic mapping, previously granted access — arrives
 as data. That is why a caller that pre-computes `PreviouslyGrantedAccess` incorrectly produces an
 access-check bypass rather than an error.
+
+### The official `SeAccessCheck` contract
+
+The WDK documentation for `SeAccessCheck` (wdm.h) states the semantics this implementation must
+honour:
+
+> *DesiredAccess* — Specifies the **ACCESS_MASK** bitmask for the access rights that the caller is
+> attempting to acquire. If the caller sets the MAXIMUM_ALLOWED bit, the routine performs all DACL
+> checks. However, **SeAccessCheck** does not do any privilege checks unless the caller specifically
+> requests them by setting the ACCESS_SYSTEM_SECURITY or WRITE_OWNER bits.
+>
+> *GrantedAccess* — Pointer to a returned access mask indicating the granted access. If the caller
+> specifies MAXIMUM_ALLOWED, and the DACL in *SecurityDescriptor* is NULL, then the routine returns
+> GENERIC_ALL plus any additional access the caller explicitly requests.
+>
+> *AccessStatus* — Pointer to the status value indicating why access was denied.
+>
+> If access is allowed, **SeAccessCheck** returns TRUE.
+>
+> — [SeAccessCheck function, Microsoft Learn](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-seaccesscheck)
+> (documentation source: `MicrosoftDocs/windows-driver-docs-ddi`, `wdk-ddi-src/content/wdm/nf-wdm-seaccesscheck.md`)
+
+Three consequences worth memorising:
+
+1. `MAXIMUM_ALLOWED` in `DesiredAccess` changes what the routine *checks*, not just what it grants.
+2. A `NULL` DACL plus `MAXIMUM_ALLOWED` grants `GENERIC_ALL` — the "empty DACL means everyone"
+   rule, at the exact spot it is implemented.
+3. Privilege-based elevation (`ACCESS_SYSTEM_SECURITY`, `WRITE_OWNER`) is opt-in per call; a caller
+   that forgets those bits gets a denial even when the token holds the privilege.
+
+The user-mode mirror of the same check is `AccessCheck` in advapi32 (documented at
+[AccessCheck function (winbase.h)](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-accesscheck));
+both ultimately exercise the same descriptor semantics.
 
 ## Identity: LSA and the authentication protocols
 
@@ -100,6 +135,68 @@ access-check bypass rather than an error.
 The split that matters: **`gina` collects credentials, `lsass` authenticates them, the kernel
 enforces the resulting token.** A validation added in the logon UI is not an authorization control.
 
+The logon call itself, in this checkout:
+
+```c
+// ds/security/base/lsa/client/austub.c:483
+LsaLogonUser (
+    IN HANDLE LsaHandle,
+    IN PSTRING OriginName,
+    IN SECURITY_LOGON_TYPE LogonType,
+    IN ULONG AuthenticationPackage,
+    IN PVOID AuthenticationInformation,
+    IN ULONG AuthenticationInformationLength,
+    IN PTOKEN_GROUPS LocalGroups OPTIONAL,
+    IN PTOKEN_SOURCE SourceContext,
+    OUT PVOID *ProfileBuffer,
+    OUT PULONG ProfileBufferLength,
+    OUT PLUID LogonId,
+    OUT PHANDLE Token,
+    OUT PQUOTA_LIMITS Quotas,
+    OUT PNTSTATUS SubStatus
+    )
+```
+
+`AuthenticationPackage` selects the provider (MSV1_0, Kerberos, …) and `Token` — the returned
+kernel token — is the *only* thing the kernel will later enforce against. The official reference:
+[LsaLogonUser function (ntsecapi.h), Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/ntsecapi/nf-ntsecapi-lsalogonuser).
+
+## Tokens and privileges in advapi32
+
+The user-mode token APIs are in `mergedcomponents/advapi32/security.c` in this tree:
+
+```c
+// mergedcomponents/advapi32/security.c:556
+OpenProcessToken (
+    HANDLE ProcessHandle,
+    DWORD DesiredAccess,
+    PHANDLE TokenHandle
+    )
+/*++
+
+Routine Description:
+
+    Open a token object associated with a process and return a handle
+    that may be used to access that token.
+```
+
+| API | Definition here | Official documentation |
+| --- | --- | --- |
+| `OpenProcessToken` | `mergedcomponents/advapi32/security.c:556` | [nf-processthreadsapi-openprocesstoken](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-openprocesstoken) |
+| `AdjustTokenPrivileges` | `mergedcomponents/advapi32/security.c:880` | [nf-winbase-adjusttokenprivileges](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-adjusttokenprivileges) |
+| `LookupPrivilegeValueW` | `mergedcomponents/advapi32/security.c:8238` | [nf-winbase-lookupprivilegevaluew](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-lookupprivilegevaluew) |
+| `LsaLogonUser` | `ds/security/base/lsa/client/austub.c:483` | [nf-ntsecapi-lsalogonuser](https://learn.microsoft.com/en-us/windows/win32/api/ntsecapi/nf-ntsecapi-lsalogonuser) |
+
+The kernel counterpart that `OpenProcessToken`'s returned handle is checked against is the object
+manager's token-type logic in `base/ntos/se/token.c` (`NtOpenProcessToken`, `NtDuplicateToken`,
+`NtAdjustPrivilegesToken` are all services in
+[`base/ntos/ke/services.tab`](https://github.com/havaianasdestruido/neo-nt5/blob/main/base/ntos/ke/services.tab)
+— the list shows `AdjustPrivilegesToken,6` and `AdjustGroupsToken,6` under their service names).
+
+One trap the official `AdjustTokenPrivileges` documentation repeats and code here confirms: the call
+can return success while adjusting **nothing**, unless you check `GetLastError` for
+`ERROR_NOT_ALL_ASSIGNED`. A privilege the token does not hold is silently skipped.
+
 ## The directory
 
 `ds/` holds Active Directory and its dependencies as separate layers:
@@ -122,6 +219,36 @@ enforces the resulting token.** A validation added in the logon UI is not an aut
 `ds/ds/src/test` and `ds/ds/src/util` exist alongside the implementation, and `admin/dcpromo` plus
 `admin/snapin` provide the management UIs. Again: those UIs configure, they do not enforce.
 
+## References
+
+Official Microsoft documentation for the routines on this page:
+
+| Routine / topic | Official documentation |
+| --- | --- |
+| `SeAccessCheck` (kernel) | [https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-seaccesscheck](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-seaccesscheck) |
+| `SeAccessCheckFromState` (kernel) | [https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-seaccesscheckfromstate](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-seaccesscheckfromstate) |
+| `SeAssignSecurity` (kernel) | [https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-seassignsecurity](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-seassignsecurity) |
+| `AccessCheck` (user mode) | [https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-accesscheck](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-accesscheck) |
+| `OpenProcessToken` | [https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-openprocesstoken](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-openprocesstoken) |
+| `AdjustTokenPrivileges` | [https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-adjusttokenprivileges](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-adjusttokenprivileges) |
+| `LookupPrivilegeValue` | [https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-lookupprivilegevalue](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-lookupprivilegevalue) |
+| `LsaLogonUser` | [https://learn.microsoft.com/en-us/windows/win32/api/ntsecapi/nf-ntsecapi-lsalogonuser](https://learn.microsoft.com/en-us/windows/win32/api/ntsecapi/nf-ntsecapi-lsalogonuser) |
+| `InitializeSecurityDescriptor` | [https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-initializesecuritydescriptor](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-initializesecuritydescriptor) |
+| `SetSecurityDescriptorDacl` | [https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-setsecuritydescriptordacl](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-setsecuritydescriptordacl) |
+| Access control overview | [https://learn.microsoft.com/en-us/windows/win32/secauthz/access-control](https://learn.microsoft.com/en-us/windows/win32/secauthz/access-control) |
+| Privileges (list of constants) | [https://learn.microsoft.com/en-us/windows/win32/secauthz/privilege-constants](https://learn.microsoft.com/en-us/windows/win32/secauthz/privilege-constants) |
+| Audit policy | [https://learn.microsoft.com/en-us/windows/win32/secauthz/auditing](https://learn.microsoft.com/en-us/windows/win32/secauthz/auditing) |
+
+In-tree anchors:
+
+| Document / file | Why |
+| --- | --- |
+| [`base/ntos/se/accessck.c`](https://github.com/havaianasdestruido/neo-nt5/blob/main/base/ntos/se/accessck.c) | `SepAccessCheck` (1660), `SeAccessCheck` (3447) |
+| [`base/ntos/se/seassign.c`](https://github.com/havaianasdestruido/neo-nt5/blob/main/base/ntos/se/seassign.c) | `SeAssignSecurity` (90), `SeAssignSecurityEx` (230) |
+| [`base/ntos/se/privileg.c`](https://github.com/havaianasdestruido/neo-nt5/blob/main/base/ntos/se/privileg.c) | `SePrivilegeCheck` (161) |
+| [`mergedcomponents/advapi32/security.c`](https://github.com/havaianasdestruido/neo-nt5/blob/main/mergedcomponents/advapi32/security.c) | The advapi32 token APIs quoted above |
+| [`ds/security/base/lsa/client/austub.c`](https://github.com/havaianasdestruido/neo-nt5/blob/main/ds/security/base/lsa/client/austub.c) | `LsaLogonUser` (483) |
+
 ## Frequently asked questions
 
 ### Q: Where do I fix an "access denied" that should have succeeded?
@@ -142,6 +269,13 @@ rg -n 'SeAccessCheck' base/ntos/ob/obse.c base/ntos/ob/obcreate.c | head
 If the descriptor is wrong, the fix is in the code that *creates* the object; if the token is wrong,
 it is in the logon path; if both are right, the check itself is the only remaining suspect — and that
 is a much higher bar of evidence.
+
+### Q: Why did `AdjustTokenPrivileges` succeed but nothing changed?
+
+Because the API's success does not mean every privilege was adjusted. The token must already contain
+the privilege being enabled; otherwise the call adjusts the rest and returns success with
+`GetLastError() == ERROR_NOT_ALL_ASSIGNED`. Always check that code after the call — the tree's own
+service code does.
 
 ### Q: Does this tree have unit tests for access checking?
 

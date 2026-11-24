@@ -69,6 +69,8 @@ tell you.
 | Change access checks, authentication or Active Directory | [Security and directory services](/security-directory) |
 | Change a header, IDL, import library or published contract | [Interfaces and cross-project contracts](/interfaces) |
 | Find or run a test, use the verifier or the debugger extensions | [Tests, diagnostics and debugging](/testing-debugging) |
+| Understand the `Nt*`/`Zw*` system services and syscall dispatch | [The native API (Nt/Zw)](/native-api) |
+| Find where a specific Win32 API is implemented in this tree | [Windows API to source map](/api-source-map) |
 | Read the auto-generated inventory | [Using the generated function index](/function-index) |
 
 The repository also keeps a parallel set of Markdown guides in

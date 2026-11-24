@@ -1,12 +1,89 @@
 ---
 title: I/O, file systems and storage
 sidebar_position: 5
-description: The IRP lifecycle, the layered split between the I/O manager, file systems, class and port drivers, Plug and Play, and where each format lives.
+description: The IRP lifecycle with the exact stack macros, the CreateFileW-to-IRP walk-through, the layered split between the I/O manager, file systems, class and port drivers, Plug and Play, and the official WDK documentation for each routine.
 ---
 
 A file operation in this tree crosses at least four separate projects. Knowing which layer owns a
 symptom is most of the work: the I/O manager (`base/ntos/io`), the file system (`base/fs`), the class
-and port drivers (`drivers/storage`), and Plug and Play / setup (`base/pnp`).
+and port drivers (`drivers/storage`), and Plug and Play / setup (`base/pnp`). This page walks one
+`CreateFile` call end to end, then maps each layer's routines to their official documentation.
+
+## From `CreateFileW` to an IRP
+
+One call, five layers, each in a different directory of this tree:
+
+```text
+app: CreateFileW(L"C:\\temp\\f.txt", ...)
+  -> kernel32 thunk   base/win32/client/fileopcr.c:5371  (CreateFileW)
+  -> ntdll stub       generated from base/ntos/ke/services.tab (CreateFile,11)
+  -> I/O manager      base/ntos/io/iomgr/create.c:37     (NtCreateFile)
+  -> filesystem       base/fs/ntfs/create.c:633          (NtfsFsdCreate)
+  -> storage stack    drivers/storage/...                (class/port drivers)
+```
+
+The public signature, as compiled against `winternl.h`:
+
+```cpp
+__kernel_entry NTSTATUS NtCreateFile(
+  [out]          PHANDLE            FileHandle,
+  [in]           ACCESS_MASK        DesiredAccess,
+  [in]           POBJECT_ATTRIBUTES ObjectAttributes,
+  [out]          PIO_STATUS_BLOCK   IoStatusBlock,
+  [in, optional] PLARGE_INTEGER     AllocationSize,
+  [in]           ULONG              FileAttributes,
+  [in]           ULONG              ShareAccess,
+  [in]           ULONG              CreateDisposition,
+  [in]           ULONG              CreateOptions,
+  [in, optional] PVOID              EaBuffer,
+  [in]           ULONG              EaLength
+);
+```
+
+— [NtCreateFile function (winternl.h), Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntcreatefile)
+
+Two parameter groups decide behaviour that is invisible in the `CreateFileW` API, and both are
+documented on that page:
+
+| `CreateDisposition` | Meaning (quoted from the official documentation) |
+| --- | --- |
+| `FILE_SUPERSEDE` | If the file already exists, replace it with the given file. If it does not, create the given file. |
+| `FILE_CREATE` | If the file already exists, fail the request and do not create or open the given file. |
+| `FILE_OPEN` | If the file already exists, open it instead of creating a new file. If it does not, fail the request. |
+| `FILE_OPEN_IF` | If the file already exists, open it. If it does not, create the given file. |
+| `FILE_OVERWRITE` | If the file already exists, open it and overwrite it. If it does not, fail the request. |
+| `FILE_OVERWRITE_IF` | If the file already exists, open it and overwrite it. If it does not, create the given file. |
+
+`ObjectAttributes` is initialized with `InitializeObjectAttributes` and carries the name — either a
+fully qualified path such as `\??\C:\temp\f.txt`, or a path relative to a `RootDirectory` handle —
+plus `OBJ_CASE_INSENSITIVE` and an optional security descriptor and quality-of-service blob. The
+official page also records two rules that show up as bugs constantly: `NtCreateFile` **never returns
+`STATUS_REPARSE`**, and for directories you must not pass `FILE_READ_DATA`, `FILE_WRITE_DATA`,
+`FILE_APPEND_DATA` or `FILE_EXECUTE` (use `FILE_LIST_DIRECTORY` / `FILE_TRAVERSE`).
+
+The kernel-side implementation in this tree is exactly the service from
+[`base/ntos/io/iomgr/create.c:37`](https://github.com/havaianasdestruido/neo-nt5/blob/main/base/ntos/io/iomgr/create.c):
+
+```c
+NTSTATUS
+NtCreateFile(
+    OUT PHANDLE FileHandle,
+    IN ACCESS_MASK DesiredAccess,
+    IN POBJECT_ATTRIBUTES ObjectAttributes,
+    OUT PIO_STATUS_BLOCK IoStatusBlock,
+    IN PLARGE_INTEGER AllocationSize OPTIONAL,
+    IN ULONG FileAttributes,
+    IN ULONG ShareAccess,
+    IN ULONG CreateDisposition,
+    IN ULONG CreateOptions,
+    IN PVOID EaBuffer OPTIONAL,
+    IN ULONG EaLength
+    )
+```
+
+It builds the `IRP_MJ_CREATE` IRP and sends it down the stack; the filesystem's `NtfsFsdCreate`
+(`base/fs/ntfs/create.c:633`) is what ultimately decides whether the open succeeds. Everything
+after `NtCreateFile` on this page describes how that IRP travels.
 
 ## The IRP lifecycle
 
@@ -18,6 +95,25 @@ back up. The stack cursor is a macro in the DDK header,
 ```c
 #define IoGetNextIrpStackLocation( Irp ) (\
     (Irp)->Tail.Overlay.CurrentStackLocation - 1 )
+```
+
+The whole family lives in the same header, and every driver in the tree is written against these
+exact macros:
+
+| Macro | Line in `public/ddk/inc/wdm/wdm.h` | What it does |
+| --- | --- | --- |
+| `IoGetCurrentIrpStackLocation` | 12293 | Returns `Tail.Overlay.CurrentStackLocation` — the caller's own slot |
+| `IoGetNextIrpStackLocation` | 12424 | The slot one level down (the next driver's) |
+| `IoSetNextIrpStackLocation` | 12711 | Advances the cursor before building the next slot |
+| `IoSkipCurrentIrpStackLocation` | 12778 | Passes the IRP down *without* a completion routine |
+| `IoSetCompletionRoutine` | 12665 | Registers the routine run when the lower driver completes |
+| `IoMarkIrpPending` | 12548 | Marks the IRP pending — required when a dispatch routine returns `STATUS_PENDING` |
+
+`IoSetCompletionRoutine` expands to a store of three booleans — `Success`, `Error`, `Cancel` — which
+is why a completion routine can be asked to run only on one outcome:
+
+```c
+#define IoSetCompletionRoutine( Irp, Routine, CompletionContext, Success, Error, Cancel ) { \
 ```
 
 Allocation and completion are indirections in
@@ -35,9 +131,16 @@ IoAllocateIrp(
 }
 ```
 
-Other anchors in the same file: `IoBuildSynchronousFsdRequest` (line 2102), `IoCreateDevice`
-(line 4236), `IofCallDriver` (line 2273), `IofCompleteRequest` (line 3316) and the thin
-`IoCompleteRequest` wrapper (line 13025).
+Anchors in the same file, with their exact lines in this checkout:
+
+| Routine | Line | Role |
+| --- | --- | --- |
+| `IoAllocateIrp` | 713 | Build an IRP for a lower driver |
+| `IoBuildSynchronousFsdRequest` | 2102 | The workhorse behind synchronous `ReadFile`/`WriteFile` |
+| `IofCallDriver` | 2273 | Send the IRP down (verifier indirection) |
+| `IofCompleteRequest` | 3316 | Run the completion chain back up |
+| `IoCreateDevice` | 4236 | Create a device object — every driver's `DriverEntry` call |
+| `IoCompleteRequest` | 13025 | The thin public wrapper over `IofCompleteRequest` |
 
 The completion path is documented at length in the source itself, in the header comment of
 `IopfCompleteRequest`:
@@ -57,6 +160,22 @@ The completion path is documented at length in the source itself, in the header 
 `STATUS_MORE_PROCESSING_REQUIRED` is the mechanism that lets a driver defer completion. Misusing it —
 returning it without ever completing the IRP later — is the classic "hung I/O with no visible owner"
 bug.
+
+### The dispatch rules that trip everyone
+
+Drawn from the code on this page and the official `IoCallDriver` documentation
+([IoCallDriver macro (wdm.h), Microsoft Learn](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-iocalldriver)):
+
+1. If a dispatch routine queues the IRP and returns, it must call `IoMarkIrpPending` first and
+   return `STATUS_PENDING` — even if the work completes instantly afterwards.
+2. If a dispatch routine calls `IoSkipCurrentIrpStackLocation`, it may **not** also register a
+   completion routine; the skip leaves no slot for it.
+3. `IoCallDriver`'s return is the lower driver's status; it is not necessarily the IRP's final
+   status. A driver that returns a status other than the one it puts in `Irp->IoStatus.Status`
+   creates the inconsistency the verifier check `CompleteRequestStatusCheck` exists to catch.
+4. The official requirement for `IoCallDriver` is `IRQL <= DISPATCH_LEVEL`, and the DDI compliance
+   rules it lists (`ForwardedAtBadIrql`, `MarkIrpPending`, `LowerDriverReturn`, …) are precisely
+   the failure shapes above.
 
 ## File system drivers
 
@@ -103,6 +222,17 @@ entirely — a change to cached-read semantics has to be made in both places or 
 The `Fsd` prefix means "file system driver": the routine may be called in the context of the
 requesting thread. `Fsp`-prefixed routines run in the file system's own worker context. That
 distinction determines what you may do about blocking, APCs and exception handling.
+
+NTFS's create path, the deepest common path in the tree:
+
+| Routine | Location | Context |
+| --- | --- | --- |
+| `NtfsFsdCreate` | [`base/fs/ntfs/create.c:633`](https://github.com/havaianasdestruido/neo-nt5/blob/main/base/fs/ntfs/create.c) | The `IRP_MJ_CREATE` dispatch entry |
+| `NtfsCommonCreate` | `base/fs/ntfs/create.c:1261` | The shared worker (FSD and FSP paths converge here) |
+| `NtfsFsdRead` | [`base/fs/ntfs/read.c:134`](https://github.com/havaianasdestruido/neo-nt5/blob/main/base/fs/ntfs/read.c) | The `IRP_MJ_READ` entry |
+
+When tracing an open failure, start at `NtfsFsdCreate` and follow the `NtfsCompleteRequest` /
+exception style of the surrounding code rather than assuming the status came from the I/O manager.
 
 ## Storage class and port drivers
 
@@ -165,6 +295,15 @@ source, not in that page.
 and a `test` directory. The kernel half is `base/ntos/io/pnpmgr`, and resource arbitration is
 `base/ntos/arb`.
 
+The SetupAPI entry points live in `base/pnp/setupapi` — `SetupDiCreateDeviceInfoList` at
+[`base/pnp/setupapi/devinfo.c:124`](https://github.com/havaianasdestruido/neo-nt5/blob/main/base/pnp/setupapi/devinfo.c)
+and `SetupDiCallClassInstaller` at
+[`base/pnp/setupapi/devinst.c:944`](https://github.com/havaianasdestruido/neo-nt5/blob/main/base/pnp/setupapi/devinst.c)
+are the two a driver-installation change touches most. Their official documentation:
+[SetupDiCreateDeviceInfoList](https://learn.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdicreatedeviceinfolist)
+and
+[SetupDiCallClassInstaller](https://learn.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdicallclassinstaller).
+
 An INF is part of the contract, not decoration — a driver that builds but is not described by an INF
 never loads on a clean install. A minimal real example,
 [`admin/dcpromo/dcpdns.inf`](https://github.com/havaianasdestruido/neo-nt5/blob/main/admin/dcpromo/dcpdns.inf):
@@ -182,6 +321,35 @@ WindowTitle=Windows NT Server Setup -- Installing DNS Server
 
 That one delegates to a network optional-component DLL. Driver INFs are larger and carry
 `[Manufacturer]`, `[SourceDisksFiles]` and `[DestinationDirs]` sections.
+
+## References
+
+Official Microsoft documentation for the routines on this page:
+
+| Routine / topic | Official documentation |
+| --- | --- |
+| `NtCreateFile` (user mode) | [https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntcreatefile](https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntcreatefile) |
+| `ZwCreateFile` (kernel mode) | [https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntddk/nf-ntddk-zwcreatefile](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntddk/nf-ntddk-zwcreatefile) |
+| `CreateFileW` (Win32) | [https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew) |
+| `IoCallDriver` / `IofCallDriver` | [https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-iocalldriver](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-iocalldriver), [https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-iofcalldriver](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-iofcalldriver) |
+| `IoCompleteRequest` | [https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-iocompleterequest](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-iocompleterequest) |
+| `IoAllocateIrp` | [https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-ioallocateirp](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-ioallocateirp) |
+| `IoBuildSynchronousFsdRequest` | [https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-iobuildsynchronousfsdrequest](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-iobuildsynchronousfsdrequest) |
+| `IoCreateDevice` | [https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-iocreatedevice](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-iocreatedevice) |
+| IRPs and IRP stack locations | [https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/irps](https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/irps) |
+| File names, paths and namespaces | [https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file](https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file) |
+| Using files in a driver | [https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/using-files-in-a-driver](https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/using-files-in-a-driver) |
+| `SetupDiCreateDeviceInfoList` | [https://learn.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdicreatedeviceinfolist](https://learn.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdicreatedeviceinfolist) |
+
+In-tree anchors:
+
+| Document / file | Why |
+| --- | --- |
+| [`public/ddk/inc/wdm/wdm.h`](https://github.com/havaianasdestruido/neo-nt5/blob/main/public/ddk/inc/wdm/wdm.h) | Every IRP macro quoted on this page, at the cited lines |
+| [`base/ntos/io/iomgr/iosubs.c`](https://github.com/havaianasdestruido/neo-nt5/blob/main/base/ntos/io/iomgr/iosubs.c) | Allocation, send, complete, `IoCreateDevice` |
+| [`base/fs/ntfs/ntfsinit.c`](https://github.com/havaianasdestruido/neo-nt5/blob/main/base/fs/ntfs/ntfsinit.c) | A complete filesystem dispatch table |
+| [`drivers/storage/classpnp/classpnp.htm`](https://github.com/havaianasdestruido/neo-nt5/blob/main/drivers/storage/classpnp/classpnp.htm) | The class-driver contract (reference only) |
+| [`base/pnp/setupapi`](https://github.com/havaianasdestruido/neo-nt5/tree/main/base/pnp/setupapi) | The SetupAPI implementation |
 
 ## Frequently asked questions
 
@@ -203,6 +371,16 @@ rg -n 'ScsiPortNotification|MapScsiStatus' drivers/storage/port/scsi/*.c | head
 
 If the same status appears in several layers, the *deepest* one that can produce it for this request
 is the one to change.
+
+### Q: What does `CreateFileW` do that `NtCreateFile` does not?
+
+Argument translation and compatibility: the Win32 layer converts DOS paths and device names,
+expands `lpSecurityAttributes`, maps `dwCreationDisposition` onto `CreateDisposition`, folds
+`FILE_FLAG_*` into `CreateOptions`, and maps the resulting `NTSTATUS` back to `GetLastError` codes.
+The implementation is `CreateFileW` at `base/win32/client/fileopcr.c:5371` (with the ANSI
+`CreateFileA` at line 5331 doing conversion first). Semantics of the open itself are identical —
+they are decided below `NtCreateFile`. See
+[Win32, windowing and the shell](/win32-shell).
 
 ### Q: Is `fltmgr` in this tree?
 

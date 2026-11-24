@@ -1,7 +1,7 @@
 ---
 title: Tests, diagnostics and debugging
 sidebar_position: 10
-description: Where tests live in this tree, the naming conventions that hide them, Driver Verifier, gflags, application verifier, and the per-component debugger extensions.
+description: Where tests live in this tree, the naming conventions that hide them, printing and breaking from kernel code, Driver Verifier, gflags, application verifier, and the per-component debugger extensions.
 ---
 
 This tree predates a single test framework. Tests exist, but they are spread across per-project
@@ -57,6 +57,33 @@ So a kernel function tested only by `base/ntos/se/utaccess.c` shows
 `No matching call found in test-named files.` in the index. That line describes the *index*, not the
 code. See [Using the generated function index](/function-index).
 
+## Printing and breaking from kernel code
+
+The debug-print family is used throughout the tree's own tests — the `ct*.c` access tests print
+their results directly:
+
+```c
+// base/ntos/se/cttoken.c:1474 (and again at 1510, 1546, 1589, 1624)
+DbgPrint("\n (debug) return length: 0x%lx \n", ReturnLength);
+```
+
+The official documentation for the family:
+[DbgPrint, DbgPrintEx, vDbgPrintEx, vDbgPrintExWithPrefix](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-dbgprint)
+documents the rules this code follows: the routine is callable at `IRQL <= DIRQL` (but only from
+checked builds do most prints appear), the format string supports the `%wZ` unicode-string
+extension, and the total length is capped (512 bytes on older systems). `KdPrint`/`KdPrintEx` are
+the macro wrappers that compile away in free builds. For a deliberate break, `DbgBreakPoint` raises
+`STATUS_BREAKPOINT` — the same effect as typing `bp` in WinDbg but from code.
+
+Practical conventions used by tests in this tree:
+
+```bash
+# how the kernel security tests print and assert
+rg -n 'DbgPrint|DbgBreakPoint' base/ntos/se/ct*.c | head
+# checked-build-only diagnostics
+rg -n '#if DBG|KdPrint' net/sockets/winsock2/wsp/afdsys/*.c | head
+```
+
 ## Driver Verifier
 
 `base/ntos/verifier/` is compiled into the kernel and provides the hooks that let I/O calls be routed
@@ -77,27 +104,32 @@ described in [Kernel and executive](/kernel#iofcalldriver-indirection).
 | `vfmessage.c`, `vfprint.c`, `vfdebug.c` | Reporting |
 
 Verifier is enabled per driver through the registry settings that `sdktools/gflags` writes, which is
-why `gflags` is the usual first step in a driver investigation.
+why `gflags` is the usual first step in a driver investigation. The official overview is
+[Driver Verifier](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/driver-verifier);
+the per-rule pages (such as the `ForwardedAtBadIrql` and `MarkIrpPending` rules listed against
+`IoCallDriver` in [I/O](/io-storage#the-dispatch-rules-that-trip-everyone)) name the exact
+`vf*.c` check behind each symptom.
 
 ## Diagnostic tools in `sdktools`
 
 `sdktools/` holds 240 tool directories. The ones most often relevant:
 
-| Tool | Purpose |
-| --- | --- |
-| `gflags` | Global flags: verifier settings, heap options, loader snaps |
-| `appverif` | Application Verifier UI (`appverif.cpp`, `avpage.cpp`, `avsheet.cpp`, `chooseexe.cpp`) |
-| `avrf` | The application-verifier runtime (`base/ntdll/avrfp.h` is the client side) |
-| `debuggers` | `windbg`, `dbgsrv`, `dbgsvc`, `drwatson`, `dumpchk`, `dumpconv`, `dumpexam`, `minidump`, `savedump`, `symsrv`, `imagehlp`, `exts` |
-| `crash`, `buggy`, `bootstat` | Crash and boot diagnostics |
-| `build`, `buildnum`, `actools` | The build engine and its helpers |
-| `checksym`, `symtodbg`, `symsrv` | Symbol handling |
-| `diskperf`, `diskmon`, `dskdump`, `dskbench` | Storage instrumentation |
-| `cpustres`, `clearmem`, `consume` | Resource stress for reproducing conditions |
+| Tool | Purpose | Official documentation |
+| --- | --- | --- |
+| `gflags` | Global flags: verifier settings, heap options, loader snaps | [GFlags](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/gflags) |
+| `appverif` | Application Verifier UI (`appverif.cpp`, `avpage.cpp`, `avsheet.cpp`, `chooseexe.cpp`) | [Application Verifier](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/application-verifier) |
+| `avrf` | The application-verifier runtime (`base/ntdll/avrfp.h` is the client side) | same as above |
+| `debuggers` | `windbg`, `dbgsrv`, `dbgsvc`, `drwatson`, `dumpchk`, `dumpconv`, `dumpexam`, `minidump`, `savedump`, `symsrv`, `imagehlp`, `exts` | [Debugging Tools for Windows](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/) |
+| `crash`, `buggy`, `bootstat` | Crash and boot diagnostics | |
+| `build`, `buildnum`, `actools` | The build engine and its helpers — see [Build](/build#buildexe-is-in-this-tree) | |
+| `checksym`, `symtodbg`, `symsrv` | Symbol handling | |
+| `diskperf`, `diskmon`, `dskdump`, `dskbench` | Storage instrumentation | |
+| `cpustres`, `clearmem`, `consume` | Resource stress for reproducing conditions | |
 
 The debugger extension sources are in `sdktools/debuggers/exts/`, split into `kextdll` (kernel),
 `uextdll` (user), `extdll` and `eng`, with `getnt4ex.bat` and `getw2kex.bat` for version-specific
-extension sets.
+extension sets. The `!analyze` and extension authoring model is documented at
+[Debugger engine extensions](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/writing-wdbgexts-extensions-).
 
 ## Per-component debugger extensions
 
@@ -118,6 +150,31 @@ windows/core/ntuser/kdexts        windows/core/ntgdi/kdexts2
 `net/tcpip/driver` has three (`kdext`, `kdext2`, `kdext3`), which is a hint that the extension set
 was revised across releases. When you change a data structure that an extension prints, the extension
 is part of the change.
+
+## References
+
+Official Microsoft documentation for the tooling on this page:
+
+| Topic | Official documentation |
+| --- | --- |
+| Driver Verifier | [https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/driver-verifier](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/driver-verifier) |
+| GFlags | [https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/gflags](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/gflags) |
+| Application Verifier | [https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/application-verifier](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/application-verifier) |
+| Special pool | [https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/special-pool](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/special-pool) |
+| PoolMon | [https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/poolmon](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/poolmon) |
+| WinDbg | [https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/debugger-download-tools](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/debugger-download-tools) |
+| `DbgPrint` / `DbgPrintEx` | [https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-dbgprint](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-dbgprint) |
+| Writing debugger extensions | [https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/writing-wdbgexts-extensions-](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/writing-wdbgexts-extensions-) |
+| Checked build differences | [https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/checked-build](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/checked-build) |
+
+In-tree anchors:
+
+| File | Why |
+| --- | --- |
+| [`base/ntos/verifier`](https://github.com/havaianasdestruido/neo-nt5/tree/main/base/ntos/verifier) | The verifier implementation |
+| [`sdktools/gflags`](https://github.com/havaianasdestruido/neo-nt5/tree/main/sdktools/gflags) | The flag editor |
+| [`sdktools/debuggers/exts`](https://github.com/havaianasdestruido/neo-nt5/tree/main/sdktools/debuggers/exts) | Extension sources |
+| `base/ntos/se/ct*.c`, `ut*.c`, `tt*.c` | The kernel unit tests with real `DbgPrint` output |
 
 ## Frequently asked questions
 
@@ -171,7 +228,8 @@ it is the only automated check in the repository that runs on Linux.
 `clearmem`, `consume` and `cpustres` in `sdktools` are stress tools for exactly that, and
 `base/ntos/mm/nolowmem.c` and `mmquota.c` are the kernel side of low-memory and quota behaviour.
 Combine them with a checked build (`razzle` without `free`) so the assertions and pool checking are
-live.
+live. The WDK's `poolmon` and special-pool documentation (links above) describe the kernel support
+these tools drive.
 
 ### Q: How do I turn on verifier for one driver?
 

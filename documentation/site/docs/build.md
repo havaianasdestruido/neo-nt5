@@ -1,7 +1,7 @@
 ---
 title: Build, package and release
 sidebar_position: 3
-description: Razzle, the dirs/sources/makefile traversal, TARGETTYPE values, postbuild staging, SKUs and the checkout gaps that block a full build.
+description: Razzle, the dirs/sources/makefile traversal, the makefile.def contract, TARGETTYPE values, the sources macros seen in this tree, postbuild staging, SKUs and the checkout gaps that block a full build.
 ---
 
 **Read this before running any historic build command.** This is a Windows `cmd` / NMAKE /
@@ -51,9 +51,38 @@ REM that is shared by all the components of NT OS/2
 
 So **add source files to `sources`, never to the local `makefile`.** The shared rules live in
 [`tools/makefile.def`](https://github.com/havaianasdestruido/neo-nt5/blob/main/tools/makefile.def),
-whose own header documents the contract: the developer supplies `sources` with the required
-`TARGETNAME`, `TARGETPATH`, `TARGETTYPE` and `SOURCES`; `build.exe` generates
-`$(_OBJ_DIR)\_objects.mac` from it.
+whose own header documents the contract:
+
+```text
+Module Name:
+
+    makefile.def
+
+Abstract:
+
+    This is the standard makefile for the components of the NT project.
+    It includes the following files:
+
+        .\sources.      - developer supplies this file.  It defines the
+                          required TARGETNAME, TARGETPATH, TARGETTYPE and
+                          SOURCES as well as optional macros that control
+                          the behavior of the compiler and linker:
+
+        $(_OBJ_DIR)\_objects.mac  - built by BUILD.EXE from .\sources.
+
+Targets:
+
+    all       - Builds all targets in this make file
+
+    clean     - Erase all targets that can be produced by this make
+                file, ignoring errors.  Also rebuilds the depend target.
+
+    depend    - Rebuilts source file dependencies, using BUILD.EXE tool
+```
+
+`build.exe` generates `$(_OBJ_DIR)\_objects.mac` from `sources`; NMAKE and `makefile.def` do the
+rest. The same header lists the CPU macros it honours — `CPUTYPE={I386|AXP64|ALPHA|MPPC|IA64|AMD64}`
+— and the per-compiler control variables.
 
 ### TARGETTYPE values
 
@@ -92,6 +121,31 @@ INCLUDES=..;..\..;\
 Note `sources.inc` rather than `sources`: the file is *included* by the architecture-specific nodes
 (`up/sources`, `mp/sources`) instead of being a leaf itself. Do not infer a target's extension from
 `TARGETTYPE` alone — consult `tools/makefile.def`.
+
+### The `sources` macros seen in this tree
+
+Every macro below is quoted from a real file already cited on this site — they are the vocabulary of
+a build change:
+
+| Macro | Meaning | Seen in |
+| --- | --- | --- |
+| `TARGETNAME` | Output binary name | `sdktools/gflags/sources`, `drivers/storage/disk/sources` |
+| `TARGETPATH` | Object/output root (conventionally `obj`) | both of the above |
+| `TARGETTYPE` | Artifact kind, table above | both |
+| `SOURCES` | The compiled inputs | `sdktools/gflags/sources` |
+| `INCLUDES` | Include search path | `base/ntos/io/iomgr/sources.inc` |
+| `TARGETLIBS` | Import libraries to link | `sdktools/gflags/sources`, `drivers/storage/disk/sources` |
+| `UMTYPE` | User-mode subsystem (`console`, `windows`) | `sdktools/gflags/sources` |
+| `USE_MSVCRT`, `USE_NATIVE_EH` | CRT and exception model | `sdktools/gflags/sources` |
+| `LINKER_STACKSIZE` | `/stack:` arguments | `sdktools/gflags/sources` |
+| `NTTARGETFILES` | Extra files produced/staged | `sdktools/gflags/sources` |
+| `MAJORCOMP`, `MINORCOMP` | Component identity for error logs | `base/ntos/io/iomgr/sources.inc` |
+| `NT_UP`, `C_DEFINES`, `LINKER_FLAGS` | Variant controls | `base/ntos/init/paemp/sources` |
+| `C_DEFINES` | Preprocessor defines for the node | both of the above |
+
+A `sources` file is NMAKE syntax and can carry `!if` / `!include` logic — the PAE/MP kernel nodes and
+the IA64 branch in `gflags/sources` are real examples. An edit to `sources` is the *minimum* half of
+a change; if the target links against a library, the producing node must have run `binplace` first.
 
 ### Path macros
 
@@ -171,6 +225,17 @@ exec           - execute the remaining command line; must be last
 
 `officialbuild` requires the machine to be listed in
 `%RazzleToolPath%\BuildMachines.txt`. `exec` must be the last Razzle parameter.
+
+## `build.exe` is in this tree
+
+The build engine itself is checked in under
+[`sdktools/build/`](https://github.com/havaianasdestruido/neo-nt5/tree/main/sdktools/build):
+`build.c`, `buildexe.c`, `buildmak.c`, `buildinc.c`, `builddb.c`, `buildscn.c`, `buildscr.cpp` and
+more, plus its own in-tree manual
+[`sdktools/build/build.htm`](https://github.com/havaianasdestruido/neo-nt5/blob/main/sdktools/build/build.htm).
+When a `build` flag's behaviour is in doubt, the parsing code in `build.c` is the authority — the
+`/cZP` style flags are ordinary argument parsing there, not magic. Read it as reference; per the
+repository's source-only policy, behaviour changes belong in the C source, not in that page.
 
 ## Version and build-number targets
 
@@ -273,6 +338,22 @@ This documentation was written and validated on Linux. No full build, no ISO cre
 installation and no boot test has been performed against this tree. Treat every command on this page
 as a description of the historical workflow, verified only where the file contents above are quoted.
 :::
+
+## References
+
+In-tree documentation and code that define the build:
+
+| Document / file | What it covers |
+| --- | --- |
+| [`tools/makefile.def`](https://github.com/havaianasdestruido/neo-nt5/blob/main/tools/makefile.def) | The shared NMAKE rules — the `sources` contract |
+| [`tools/projects.inc`](https://github.com/havaianasdestruido/neo-nt5/blob/main/tools/projects.inc) | Path macros for every tree |
+| [`sdktools/build/build.htm`](https://github.com/havaianasdestruido/neo-nt5/blob/main/sdktools/build/build.htm) | The `build.exe` manual |
+| [`sdktools/build/build.c`](https://github.com/havaianasdestruido/neo-nt5/blob/main/sdktools/build/build.c) | The `build.exe` argument parsing and traversal |
+| [`tools/razzle.cmd`](https://github.com/havaianasdestruido/neo-nt5/blob/main/tools/razzle.cmd) | The environment script |
+| [`tools/postbuildscripts/pbuild.dat`](https://github.com/havaianasdestruido/neo-nt5/blob/main/tools/postbuildscripts/pbuild.dat) | The postbuild sequence |
+| [`makefil0`](https://github.com/havaianasdestruido/neo-nt5/blob/main/makefil0) | Build-date/number targets |
+| [`public/sdk/inc/ntverp.h`](https://github.com/havaianasdestruido/neo-nt5/blob/main/public/sdk/inc/ntverp.h) | Product version macros |
+| `sdktools/buildnum`, `sdktools/actools` | Build-number helpers and AC tools |
 
 ## Frequently asked questions
 
