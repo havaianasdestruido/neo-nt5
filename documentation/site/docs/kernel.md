@@ -15,7 +15,7 @@ description: The base/ntos managers, where system services are implemented, obje
 | `ke` | Kernel / scheduler | `kiinit.c`, `dpcobj.c`, `dpcsup.c`, `eventobj.c`, `mutntobj.c`, `bugcheck.c`, `balmgr.c`, `channel.c` |
 | `ps` | Processes and threads | `create.c`, `pscid.c`, `psenum.c`, `psjob.c`, `psimpers.c`, `psquota.c`, `security.c` |
 | `mm` | Virtual memory | `mmfault.c`, `allocvm.c`, `mapview.c`, `freevm.c`, `modwrite.c`, `crashdmp.c`, `mi.h`, `miglobal.c` |
-| `io` | I/O manager and PnP | `iomgr/iosubs.c`, `iomgr/create.c`, `iomgr/complete.c`, `pnpmgr/` |
+| `io` | I/O manager and PnP | `iomgr/iosubs.c`, `iomgr/create.c`, `iomgr/complete.c`, `pnpmgr/` (under `base/ntos/io/`) |
 | `ob` | Object manager | `obcreate.c`, `obhandle.c`, `obref.c`, `obinsert.c`, `obtype.c`, `ob.txt` |
 | `ex` | Executive support, pool, time | `pool.c` |
 | `se` | Security reference monitor | `accessck.c`, `token.c`, `adtlog.c` — see [Security](/security-directory) |
@@ -161,6 +161,103 @@ The same file defines `ExAllocatePoolWithTagPriority` (line 2111) and `ExAllocat
 (line 2273). The four-character tag is what pool-mon and the crash dump show, so a new allocation
 site should use a tag that identifies its component rather than reusing a generic one.
 
+## The shape of a system service
+
+Every `Nt*` service in this tree follows the same template. Reading one is enough to read them all.
+`NtCreateProcessEx` (`base/ntos/ps/create.c:884`) shows the four mandatory parts:
+
+```c
+NtCreateProcessEx(
+    OUT PHANDLE ProcessHandle,
+    IN ACCESS_MASK DesiredAccess,
+    IN POBJECT_ATTRIBUTES ObjectAttributes OPTIONAL,
+    IN HANDLE ParentProcess OPTIONAL,
+    IN ULONG Flags,
+    IN HANDLE SectionHandle OPTIONAL,
+    IN HANDLE DebugPort OPTIONAL,
+    IN HANDLE ExceptionPort OPTIONAL,
+    IN ULONG JobMemberLevel
+    )
+{
+    NTSTATUS Status;
+
+    PAGED_CODE();                                  // 1. assert IRQL < DISPATCH_LEVEL
+
+    if (KeGetPreviousMode() != KernelMode) {       // 2. only probe for user callers
+
+        try {                                      // 3. exceptions must not escape
+            ProbeForWriteHandle (ProcessHandle);
+            ...
+        } except (EXCEPTION_EXECUTE_HANDLER) {
+            return GetExceptionCode();
+        }
+    }
+
+    ...                                            // 4. do the work, return STATUS_*
+}
+```
+
+| Step | Why |
+| --- | --- |
+| `PAGED_CODE()` | Expands to an assertion in checked builds that the caller is at `IRQL < DISPATCH_LEVEL`. It documents the paging contract in code. |
+| `KeGetPreviousMode() != KernelMode` | A kernel caller's pointers are trusted; a user caller's pointers must be probed. |
+| `ProbeForWrite`/`ProbeForRead` in `try`/`except` | A bad user pointer must become `STATUS_ACCESS_VIOLATION`, not a kernel crash. |
+| `NTSTATUS` return | The caller translates it; the kernel never raises a Win32 error. |
+
+`#pragma alloc_text(PAGE, NtName)` moves the routine into the pageable section. Services that can run
+at raised IRQL — DPCs, completion routines, cancel routines — must **not** be paged, which is why
+`IofCallDriver` and `IofCompleteRequest` are `FASTCALL` and unpaged while `NtCreateFile` is pageable.
+
+## Pool, lookaside lists and quota
+
+| Primitive | Purpose | Implementation |
+| --- | --- | --- |
+| `ExAllocatePoolWithTag` | Paged or nonpaged pool with a tag | `base/ntos/ex/pool.c` |
+| `ExAllocatePoolWithTagPriority` | Allocation with a priority hint | `pool.c:2111` |
+| `ExAllocatePoolWithQuotaTag` | Charge the process quota | `pool.c:2273` |
+| `ExInitializeLookasideList` | Per-processor fixed-size cache | `base/ntos/ex/lookasid.c` |
+| `ExInitializeNPagedLookasideList` | Nonpaged lookaside list | `base/ntos/ex/lookasid.c` |
+| `PsChargePoolQuota` | Charge pool to a process | `base/ntos/ps/psquota.c` |
+| `PsReturnPoolQuota` | Return it | `psquota.c` |
+
+A lookaside list is a fixed-size, per-processor free list. It is faster than general pool for
+objects that are allocated and freed frequently (IRPs, work items, SCB extensions). It trades memory
+for lock-free fast paths.
+
+Pool tags are four characters. The convention in this tree is to build them from the component
+name, for example `'Irp '` or `'File'`. The tag is what `poolmon` and `!poolused` display, so a
+generic tag (`'None'`) makes a leak undiagnosable.
+
+## Kernel synchronization
+
+| Primitive | IRQL | Use |
+| --- | --- | --- |
+| `FAST_MUTEX` (`ExAcquireFastMutex`) | Raises to `APC_LEVEL` | Protects data for short periods, allows paging |
+| `KMUTANT` (`KeWaitForSingleObject`) | `PASSIVE_LEVEL` | Kernel mutex; can be acquired recursively by the owning thread |
+| `KSPIN_LOCK` (`KeAcquireSpinLock`) | Raises to `DISPATCH_LEVEL` | Very short critical sections, no paging |
+| `ERESOURCE` (`ExAcquireResourceExclusiveLite`) | `PASSIVE_LEVEL` | Reader/writer lock for filesystem metadata |
+| `KEVENT` (`KeWaitForSingleObject`) | `PASSIVE_LEVEL` | Signalling between threads |
+| `KSEMAPHORE` (`KeWaitForSingleObject`) | `PASSIVE_LEVEL` | Counted signalling |
+| `KGATE` / `KQUEUE` | `PASSIVE_LEVEL` | Wait queues and completion ports |
+
+The rule that prevents the most common deadlock: **never** acquire a spin lock and then call
+something that can block or page. If you must, drop the lock first, or use a `FAST_MUTEX`/`ERESOURCE`
+that permits paging.
+
+## Kernel object lifetimes
+
+| Object | Create | Reference | Dereference |
+| --- | --- | --- | --- |
+| Process | `PsCreateSystemProcess` | `ObReferenceObjectByHandle` | `ObDereferenceObject` |
+| Thread | `PsCreateSystemThread` | `ObReferenceObjectByHandle` | `ObDereferenceObject` |
+| Event | `KeInitializeEvent` | `ObReferenceObject` | `ObDereferenceObject` |
+| File object | `IoCreateStreamFileObject` | `ObReferenceObject` | `ObDereferenceObject` |
+| Device object | `IoCreateDevice` | `ObReferenceObject` | `IoDeleteDevice` |
+| Section | `MmCreateSection` | `ObReferenceObjectByHandle` | `ObDereferenceObject` |
+
+Every successful reference must be balanced. A leaked pointer count is invisible to a handle audit,
+because the handle can be closed while the object stays alive.
+
 ## Frequently asked questions
 
 ### Q: How do I find every implementation of a system service?
@@ -259,3 +356,31 @@ is included by the link-configuration nodes (`up`, `mp`, `pae`, `paemp`) and car
 settings, while `project.mk` sets project-level paths. Changing one of those files changes every
 kernel binary at once — which is exactly why such an edit needs a stated reason and a build of all
 four configurations.
+
+### Q: What does `PAGED_CODE()` actually do?
+
+In a checked build it expands to an assertion that the current IRQL is below `DISPATCH_LEVEL`. In a
+free build it is a no-op. It is both a runtime check and documentation: the routine is in a pageable
+section (`#pragma alloc_text(PAGE, ...)`), so calling it at `DISPATCH_LEVEL` is a page fault at
+raised IRQL — a bugcheck. `base/ntos/mm/mmfault.c` shows the fault path; there is no recovery.
+
+### Q: Why are `IofCallDriver` and `IofCompleteRequest` not pageable?
+
+Because they are called from DPCs and completion routines at `DISPATCH_LEVEL`, where paging is
+illegal. They are marked `FASTCALL` and live in nonpaged code. If you need to do pageable work from a
+completion routine, queue a work item (`ExQueueWorkItem`) instead of calling pageable code directly.
+
+### Q: What is the difference between `ObReferenceObjectByHandle` and `ObOpenObjectByName`?
+
+`ObReferenceObjectByHandle` converts an **existing handle** into an object pointer, with an access
+check against the handle's granted access. `ObOpenObjectByName` looks a name up in the object
+directory and creates a **new handle**, performing an access check against the caller's token. Use
+the first when a driver receives a handle from user mode; use the second to open `\Device\...` or
+`\BaseNamedObjects\...` by name.
+
+### Q: Where does the kernel put its version string?
+
+`public/sdk/inc/ntverp.h` defines the product type and build number, and the kernel's loader block
+carries it into `NtMajorVersion`/`NtMinorVersion`/`NtBuildNumber` in the `KUSER_SHARED_DATA` page.
+That page is mapped read-only into every process at `0x7FFE0000` and is how user mode reads the
+version without a syscall.

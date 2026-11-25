@@ -188,6 +188,93 @@ variants that matter most in this tree:
 A directory name alone does not prove the variant is supported in this snapshot. Read the `sources`
 file and the `!IF` guards before asserting a target exists.
 
+## Address space layout
+
+The split between user and kernel address space is a property of the build configuration, not of
+the hardware alone. The default 32-bit layout is a 2 GiB / 2 GiB split; the `/3GB` boot switch moves
+it to 3 GiB / 1 GiB for programs linked with `LARGEADDRESSAWARE`; PAE changes physical addressing,
+not the virtual split.
+
+```text
+32-bit default                    32-bit /3GB                      x64
+0x00000000 +----------+           0x00000000 +----------+          0x0000000000000000
+           | user    |                      | user    |                          | user
+0x7FFFFFFF +----------+           0xBFFFFFFF +----------+          0x000007FFFFFFFFFF
+0x80000000 | kernel  |           0xC0000000 | kernel  |          0xFFFF800000000000
+           |         |                      |         |                          | kernel
+0xFFFFFFFF +----------+           0xFFFFFFFF +----------+          0xFFFFFFFFFFFFFFFF
+```
+
+`base/ntos/mm` enforces the split: `MmUserProbeAddress` is the boundary above which a user-mode
+pointer is invalid, and `ProbeForRead`/`ProbeForWrite` check it. A driver that captures a user
+pointer without probing can be handed a kernel address and read or write kernel memory — the
+classic "user-mode pointer capture" vulnerability.
+
+The tree carries the PAE variants in `base/ntos/init/pae` and `base/ntos/init/paemp`, with
+`C_DEFINES=$(C_DEFINES) /D_X86PAE_` in `base/ntos/init/paemp/sources`.
+
+## System service dispatch
+
+The full path from a Win32 call to the executive, with the tree's file for each hop:
+
+| Hop | Location |
+| --- | --- |
+| Win32 export | `base/win32/client/<family>.c`, export list in `kernel32.prf` |
+| Argument conversion | `base/win32/client` (ANSI/Unicode, path translation) |
+| Native stub | generated from `base/ntos/ke/services.tab` by `gensrv` |
+| Syscall instruction | `int 2Eh` / `sysenter`; entry at `base/ntos/ke/i386/trap.asm` |
+| Dispatcher | `KiSystemService`; table at `base/ntos/ke/kiinit.c:314` |
+| Service implementation | `base/ntos/<manager>/...`, e.g. `io/iomgr/create.c:37` |
+
+The table is built from `services.tab` (284 lines, `Name,ArgumentCount`). `KeServiceDescriptorTable`
+is the user-mode table; `KeServiceDescriptorTableShadow` is the copy that `win32k.sys` fills with
+`NtUser*`/`NtGdi*` at index 1. The dispatcher selects the table from the caller's `PreviousMode`, which
+is why a Win32k call from a user thread works while the same call from a kernel thread without a
+Win32k context does not.
+
+## Process and thread objects
+
+The executive represents a process with an `EPROCESS` and a thread with an `ETHREAD`. The important
+fields, for orientation:
+
+| Object | Field | Meaning |
+| --- | --- | --- |
+| `EPROCESS` | `Pcb` | The kernel process block (`KPROCESS`) |
+| | `UniqueProcessId` | The PID |
+| | `ActiveThreads` | Thread count |
+| | `ObjectTable` | The handle table |
+| | `SectionObject` | The executable image |
+| | `DirectoryObject` | The object directory |
+| | `Token` | The primary token (`EX_FAST_REF`) |
+| `ETHREAD` | `Tcb` | The kernel thread block (`KTHREAD`) |
+| | `Cid` | `CLIENT_ID` (process and thread IDs) |
+| | `ThreadsProcess` | Owning `EPROCESS` |
+| | `StartAddress` | The `LPTHREAD_START_ROUTINE` |
+| | `Win32StartAddress` | The Win32 start address |
+| | `Teb` | The thread's TEB |
+
+`PsCreateSystemThread` (`base/ntos/ps/create.c:184`) creates a thread in the initial system process
+when `ProcessHandle == NULL`. `PsLookupProcessByProcessId` and `PsLookupThreadByThreadId` are the
+lookups behind `NtOpenProcess`/`NtOpenThread`.
+
+## Executive manager reference
+
+| Manager | Key routines | Responsibility |
+| --- | --- | --- |
+| `ke` | `KeWaitForSingleObject`, `KeAcquireSpinLock`, `KeInsertQueueDpc`, `KeBugcheckEx` | Scheduling, synchronization, DPC/ISR, bugcheck |
+| `mm` | `MmAllocatePagesForMdl`, `MmProbeAndLockPages`, `MmBuildMdlForNonPagedPool` | Virtual memory, MDLs, paging |
+| `ps` | `PsCreateSystemThread`, `PsLookupProcessByProcessId`, `PsTerminateProcess` | Process/thread lifecycle |
+| `io` | `IoCreateDevice`, `IoCallDriver`, `IoCompleteRequest`, `IoAllocateIrp` | I/O manager and PnP |
+| `ob` | `ObReferenceObjectByHandle`, `ObOpenObjectByName`, `ObInsertObject` | Object namespace and handles |
+| `se` | `SeAccessCheck`, `SeAssignSecurity`, `SeTokenIsAdmin` | Access checks and tokens |
+| `ex` | `ExAllocatePoolWithTag`, `ExInitializeResourceLite`, `ExInterlockedInsertTailList` | Pool, resources, interlocked lists |
+| `config` | `NtCreateKey`, `NtQueryValueKey`, `CmRegisterCallback` | Registry |
+| `cache` | `CcInitializeCacheMap`, `CcPinRead`, `CcFlushCache` | Cache manager |
+| `lpc` | `NtCreatePort`, `NtConnectPort`, `NtRequestWaitReplyPort` | LPC ports |
+| `po` | `PoCallDriver`, `PoRegisterDevice`, `PoSetPowerState` | Power manager |
+| `dbgk` | `DbgkInitialize`, `DbgkCreateThread` | User-mode debugging |
+| `rtl` | `RtlInitUnicodeString`, `RtlAllocateHeap`, `RtlNtStatusToDosError` | Runtime library |
+
 ## Frequently asked questions
 
 ### Q: Where does a system call actually start and end?
