@@ -116,6 +116,97 @@ See [Tests, diagnostics and debugging](/testing-debugging) for the conventions t
 Test matching is also by **unqualified leaf name**: `Obj::Method` is compared as `Method`, so a
 matching call may belong to a completely unrelated function with the same name.
 
+## Reading an entry
+
+An entry in the generated index is a claim with evidence. Here is a representative entry, decoded
+field by field:
+
+```text
+## RtlAllocateHeap
+`base/ntos/rtl/heap.c:1487`
+
+PVOID RtlAllocateHeap(PVOID HeapHandle, ULONG Flags, SIZE_T Size);
+
+Bucket: memory · 3 call sites · No matching call found in test-named files.
+```
+
+| Field | Meaning |
+| --- | --- |
+| Heading | The symbol name, verbatim from the source |
+| Path:line | The definition site, as the parser found it |
+| Signature | The declaration as written, not a normalised prototype |
+| Bucket | One of 40 buckets, derived from the directory (`memory`, `file`, `registry`, `process`, ...) |
+| Call sites | Files in the tree that reference the symbol |
+| Test line | Whether a test-named file references it |
+
+The "No matching call found in test-named files" line is **not** a claim that the function is
+untested. It is a statement about a filename heuristic: the generator only looks at files whose
+names contain `test`, `ut`, or `t` followed by the subject. A function exercised by a test named
+`verify_heap.c` will report no match. Read the line as "no *index-visible* test", and go look at the
+component's test directory.
+
+## Querying the index
+
+The generated pages are Markdown, so the whole index is greppable. Some useful queries:
+
+```bash
+# Every definition in a bucket
+rg -l '^## ' documentation/site/docs/reference/memory-*.md
+
+# Find a symbol across all buckets
+rg -n '^## RtlAllocateHeap' documentation/site/docs/reference/
+
+# Which files define symbols in a given bucket, sorted
+rg -h '^\`base/' documentation/site/docs/reference/memory-*.md | sort | uniq -c | sort -rn
+
+# Every symbol whose definition sits in base/ntos/rtl
+rg -n '^## ' -A1 documentation/site/docs/reference/*.md | grep -B1 'base/ntos/rtl'
+```
+
+Because the index is regenerated from the tree, it cannot go stale relative to the code — but it
+can go stale relative to the **build** if the generator's parser misses a file. `reference/coverage.md`
+lists the files it could not parse, which is the honest answer to "why is my function missing?".
+
+## The generator's own tests
+
+`documentation/tests/test_generate.py` has nine tests that pin the generator's contract:
+
+| Test | What it asserts |
+| --- | --- |
+| `test_c_definitions_and_calls` | The C parser finds definitions and call sites |
+| `test_python_functions_and_calls` | The Python parser does the same for `def`/`async def` |
+| `test_hash_changes_with_body` | The content hash covers the body, so an edit changes the hash |
+| `test_test_path_detection` | Test-file path detection matches the documented heuristic |
+| `test_generation_writes_test_evidence` | Generated pages carry test evidence |
+| `test_generation_cleans_stale_pages` | A regeneration removes pages that no longer have symbols |
+| `test_every_page_carries_a_faq` | Every generated page has a `## Frequently asked questions` section |
+| `test_page_faq_is_built_from_that_page` | The FAQ is built from **that page's** symbols, not a global list |
+| `test_faq_snippet_cannot_break_the_code_fence` | A FAQ snippet cannot close or unbalance a code fence |
+
+Run them with:
+
+```sh
+/tmp/venv/bin/python -m unittest discover -s documentation/tests
+```
+
+or, after `npm ci`, as part of the documentation CI job (`.github/workflows/docs.yml`), which runs
+the unittests, the generator, and `npm run build` in that order.
+
+## Regenerating
+
+```sh
+python3 documentation/scripts/generate.py --prefix base/ntos
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `--prefix DIR` | Only index tracked paths with this prefix (repeatable; useful for development) |
+| `--output DIR` | Output directory (default `documentation/site/docs/reference`) |
+| `--revision SHA` | The revision stamped into the pages; defaults to `$GITHUB_SHA` |
+
+The generator writes `index.md`, `coverage.md` and `<bucket>-NNNN.md`. It does **not** touch any
+hand-written page, so the two halves of the site never collide.
+
 ## Frequently asked questions
 
 ### Q: Why does my function not appear in the index at all?
@@ -211,3 +302,55 @@ Left out by design: preprocessing, symbol resolution, cross-language analysis, e
 claim about what a function does. Adding them would turn a fast, deterministic, evidence-linked
 inventory into an analysis whose failures are invisible. The honest improvement is to make the gaps
 legible — which is what the per-page FAQ, the `Variants` wording and the coverage report are for.
+
+### Q: Does the index cover every function in the tree?
+
+No, and it says so. It covers files the parser can reach under the paths you pass, and it lists the
+ones it could not parse in `reference/coverage.md`. Coverage is a property of the run, not of the
+tree: a `--prefix` run indexes only that subtree, which is why a development run must not be
+mistaken for a complete one.
+
+### Q: Why do some symbols have a signature with `(` on the next line?
+
+Because the generator reports the declaration **as written**, not a normalised prototype. This tree
+uses a few styles — `Name(` at the end of a line, `Name` alone on a line, and the one-line form. The
+signature is copied verbatim so that a diff of the index shows a real change in the source.
+
+### Q: Why does the bucket page number matter?
+
+Because the generator caps symbols per page (`bucket-NNNN`), so a bucket is split into several
+pages. The number is the page index, not a count. A bucket that grows past the cap gains a page
+without any symbol moving.
+
+### Q: Can I link to a symbol in the index from another page?
+
+Yes, but the heading must match exactly. The generator's heading is `## <Symbol>`, so the anchor is
+`#<symbol>` after Docusaurus slugifies it. Because the index is regenerated, a symbol rename breaks
+the link — and `onBrokenAnchors: 'throw'` turns that into a build failure rather than a silent
+404.
+
+### Q: How do I know whether a page in `reference/` is stale?
+
+Check its `revision` stamp against `git rev-parse HEAD`. The generator writes the revision into the
+front matter; a page stamped with an older revision was generated from a different tree and should
+be regenerated, not edited.
+
+### Q: Should I edit a page in `reference/`?
+
+No. Every page there is generated and will be overwritten by the next run. Edit the source, or edit
+the generator. The hand-written API reference lives one level up in `documentation/site/docs/`, not
+in `reference/`.
+
+### Q: What do I do if a function I expected is missing?
+
+Check `reference/coverage.md` first — it lists unparsed files. If the file parsed, check whether the
+symbol is a definition the parser recognises (a file-scope `Name(` in C, a `def`/`async def` in
+Python). If the symbol is a forwarder (a `.def`/`.src` `= NTDLL.RtlXxx` entry) there is no
+definition in the tree, so the index is right that it is absent — look it up on
+[ADVAPI32](/advapi32-api) or [NTDLL](/ntdll-api) instead.
+
+### Q: Why does the index say a symbol has no tests when it plainly does?
+
+Because test detection is **path-based**: the generator looks for a reference in a file whose name
+looks like a test. A test named `verify_heap.c` is invisible to that heuristic. Read the line as
+"no index-visible test" and check the component's `ut*.c`/`test*.c` directory directly.

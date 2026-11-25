@@ -150,6 +150,135 @@ document *is* the record of which orderings are safe. A sibling
 [`registry.txt`](https://github.com/havaianasdestruido/neo-nt5/blob/main/net/sockets/winsock2/wsp/afdsys/registry.txt)
 (202 lines) documents AFD's registry parameters the same way.
 
+## NDIS in detail
+
+NDIS is the boundary between the hardware-specific miniport and the protocol stack. `net/ndis/sys`
+is the NDIS wrapper; the miniport's contract is a set of function pointers it exports and a set of
+NDIS services it calls.
+
+| Miniport exports | Purpose |
+| --- | --- |
+| `DriverEntry` | Registers the miniport with `NdisMRegisterMiniport` or `NdisMRegisterMiniportDriver` |
+| `MiniportInitialize` | Bring the adapter to a known state |
+| `MiniportReset` | Reset the adapter |
+| `MiniportHalt` | Tear it down |
+| `MiniportSend` / `MiniportSendPackets` | Transmit a packet or a batch |
+| `MiniportReturnPacket` | Reclaim a packet after a send completes |
+| `MiniportQueryInformation` / `MiniportSetInformation` | OID requests |
+| `MiniportISR` / `MiniportHandleInterrupt` | Interrupt handling (split by design) |
+| `MiniportCheckForHang` | Detect a stalled adapter |
+| `MiniportShutdown` | Power-down path |
+
+A miniport never allocates or frees packets. It describes the transfer and calls
+`NdisMIndicateReceivePacket` for receives, and returns `NDIS_STATUS_PENDING` from
+`MiniportSend` unless the send completed synchronously. `MiniportReturnPacket` is where the protocol
+reclaims the packet — a miniport that forgets to call it leaks the pool.
+
+| NDIS service | Purpose |
+| --- | --- |
+| `NdisMRegisterMiniport` | Register a legacy miniport (`net/ndis/sys/configm.c:36`) |
+| `NdisMRegisterMiniportDriver` | Register an NDIS 5+ miniport driver |
+| `NdisMSetAttributesEx` | Declare the adapter's media, properties and callback table |
+| `NdisMAllocateMapRegisters` | Bus-master DMA map registers |
+| `NdisMStartBufferPhysicalMapping` | Map a buffer for DMA |
+| `NdisMQueryAdapterResources` | Get the assigned resources |
+| `NdisReadConfiguration` | Read a registry parameter (`net/ndis/sys/configm.c`) |
+| `NdisWriteConfiguration` | Write one |
+| `NdisMIndicateReceivePacket` | Deliver received data upward |
+| `NdisMSetTimer` / `NdisMCancelTimer` | Miniport timers |
+| `NdisMRegisterDevice` | Create a device object for a control channel |
+| `NdisMGetDeviceProperty` | Query PnP device properties |
+
+### OID requests
+
+An OID (Object ID) is a hardware/protocol parameter. The protocol sends an OID request
+(`NdisOidRequest` in NDIS 5, `NdisRequest` in NDIS 4) and the miniport answers it. Some are
+mandatory, some are optional, some are settable, some are read-only.
+
+| OID | Meaning |
+| --- | --- |
+| `OID_GEN_SUPPORTED_LIST` | The OIDs the miniport supports |
+| `OID_GEN_HARDWARE_STATUS` | `NdisHardwareStatusReady`, `Initializing`, `Reset`, `Closing`, `NotReady` |
+| `OID_GEN_MEDIA_SUPPORTED` / `OID_GEN_MEDIA_IN_USE` | `NdisMedium802_3`, `NdisMedium802_5`, `NdisMediumFddi`, `NdisMediumAtm`, ... |
+| `OID_GEN_MAXIMUM_FRAME_SIZE` | The largest frame the adapter can carry |
+| `OID_GEN_LINK_SPEED` | Link speed in 100 bps units |
+| `OID_GEN_TRANSMIT_BUFFER_SPACE` | Transmit buffer space |
+| `OID_GEN_VENDOR_ID` | Vendor ID |
+| `OID_GEN_VENDOR_DESCRIPTION` | Vendor string |
+| `OID_GEN_CURRENT_PACKET_FILTER` | The packet filter (promiscuous, broadcast, multicast, ...) |
+| `OID_GEN_CURRENT_LOOKAHEAD` | Lookahead size |
+| `OID_802_3_PERMANENT_ADDRESS` | The burnt-in MAC address |
+| `OID_802_3_CURRENT_ADDRESS` | The currently programmed address |
+| `OID_802_3_MULTICAST_LIST` | The multicast address list |
+| `OID_802_3_MAXIMUM_LIST_SIZE` | Maximum multicast addresses |
+
+The headers are `public/ddk/inc/ndis.h` (for `NdisMedium*`) and `public/sdk/inc/ntddndis.h` for
+the OID definitions; the NDIS library's own copy is under `net/ndis/sys`.
+
+## TDI and the transport boundary
+
+TDI (Transport Driver Interface) is the kernel-mode transport interface that AFD (the Winsock
+kernel-mode helper) uses. `net/tdi` holds the TDI client library; the transports implement
+`TdiBuildDeviceIoControlSetEvent`-style handlers.
+
+| TDI request | Purpose |
+| --- | --- |
+| `TDI_ASSOCIATE_ADDRESS` | Associate a transport address with a connection |
+| `TDI_CONNECT` | Connect |
+| `TDI_DISCONNECT` | Disconnect |
+| `TDI_LISTEN` | Listen |
+| `TDI_ACCEPT` | Accept |
+| `TDI_SEND` / `TDI_RECEIVE` | Datagram and stream data |
+| `TDI_SEND_DATAGRAM` / `TDI_RECEIVE_DATAGRAM` | Connectionless data |
+| `TDI_SET_EVENT_HANDLER` | Register an event handler |
+| `TDI_QUERY_INFORMATION` / `TDI_SET_INFORMATION` | Query/set transport state |
+
+The transport's device object is `\Device\Tcp`, `\Device\Udp`, `\Device\RawIp`, `\Device\Ip`, or
+`\Device\IPMulticast` in this tree. An AFD socket opens one of these and turns Winsock calls into
+TDI requests.
+
+## AFD: from Winsock to TDI
+
+`net/sockets/winsock2/wsp/afdsys` is the **Ancillary Function Driver**, the kernel-mode part of Winsock. `ws2_32.dll` talks
+to it with IOCTLs:
+
+| AFD IOCTL | Purpose |
+| --- | --- |
+| `IOCTL_AFD_BIND` | Bind a socket to an address |
+| `IOCTL_AFD_CONNECT` | Connect |
+| `IOCTL_AFD_LISTEN` | Listen |
+| `IOCTL_AFD_ACCEPT` | Accept a connection |
+| `IOCTL_AFD_SEND` / `IOCTL_AFD_RECEIVE` | Data transfer |
+| `IOCTL_AFD_SELECT` | `select()` |
+| `IOCTL_AFD_WSP_RECV_DATAGRAM` | Datagram receive |
+| `IOCTL_AFD_GET_SOCK_NAME` / `IOCTL_AFD_GET_PEER_NAME` | `getsockname` / `getpeername` |
+| `IOCTL_AFD_SET_CONTEXT` / `IOCTL_AFD_GET_CONTEXT` | Per-socket context |
+| `IOCTL_AFD_TRANSMIT_FILE` | `TransmitFile` |
+| `IOCTL_AFD_TRANSMIT_PACKETS` | `TransmitPackets` |
+| `IOCTL_AFD_WSP_EVENT_SELECT` | `WSAEventSelect` |
+| `IOCTL_AFD_WSP_ENUM_NETWORK_EVENTS` | `WSAEnumNetworkEvents` |
+
+`IOCTL_AFD_*` codes are defined in the private headers inside
+`net/sockets/winsock2/wsp/afdsys` (`afdp.h`, `afdstr.h`, `afddata.h`); `net/published/inc/afd.w` is
+the published AFD interface description. The `IOCTL_AFD_SELECT` request is how `select()` blocks: AFD
+queues the request and completes it when any of the socket events in the mask fires.
+
+## Winsock in the tree
+
+`net/sockets/winsock2` is the user-mode Winsock stack: `ws2_32/` builds `ws2_32.dll`, `wsock32/`
+builds `wsock32.dll`, and `wsp/` holds the service-provider side including `afdsys`. The **catalog** of providers is the registry key
+`HKLM\SYSTEM\CurrentControlSet\Services\WinSock2\Parameters\Protocol_Catalog9` (and
+`Namespace_Catalog5`). Each entry is a `WSAPROTOCOL_INFOW`-shaped record with a `ProtocolName` and
+a `CatalogEntryId`; the namespace providers are enumerated by `WSAEnumNameSpaceProvidersW`.
+
+| Library | Role |
+| --- | --- |
+| `ws2_32.dll` | The Winsock 2 API; talks to AFD |
+| `wsock32.dll` | The Winsock 1.1 compatibility layer |
+| `mswsock.dll` | The Microsoft extensions (`TransmitFile`, `AcceptEx`, `ConnectEx`, `WSARecvEx`) |
+| `wshtcpip.dll` | The TCP/IP helper for `ws2_32` |
+| `wshqos.dll` | Quality of Service helper |
+
 ## Frequently asked questions
 
 ### Q: A `send()` hangs. Which layer do I instrument first?
@@ -225,3 +354,60 @@ grep -rn "OPTIONAL_DIRS" net/*/dirs | head
 
 `net/branch-reasons-and-info.txt` and `net/owners.txt` are checked in and record ownership and
 branch history for this project — useful when a directory's status is unclear.
+
+### Q: Why does my miniport's `MiniportSend` get a packet it cannot use?
+
+Because the packet's buffer chain may not be contiguous or may not match the adapter's alignment.
+Use `NdisQueryPacket` to get the buffer count, `NdisGetFirstBufferFromPacket` to get the first
+buffer, and `NdisMStartBufferPhysicalMapping` to map it for DMA. A miniport that assumes
+`FirstBuffer` holds the whole frame works only for small frames and crashes on jumbo or coalesced
+packets.
+
+### Q: What is the difference between `NdisMRegisterMiniport` and `NdisMRegisterMiniportDriver`?
+
+`NdisMRegisterMiniport` registers a **legacy** miniport that NDIS calls back into for each adapter;
+`NdisMRegisterMiniportDriver` registers an NDIS 5 miniport **driver** that returns an
+`NDIS_MINIPORT_CHARACTERISTICS` table and is initialised per adapter. The 5.x model separates the
+driver from the adapter, which is what PnP requires. The legacy entry point at
+`net/ndis/sys/configm.c:36` is the shim that adapts the old contract.
+
+### Q: How does `select()` actually block?
+
+`ws2_32.dll` calls `IOCTL_AFD_SELECT` with a mask of events. AFD queues the request and completes it
+when any of the sockets in the set signals one of the events, or when the timeout expires. That is
+why `select()` on a socket that is not in the mask returns immediately, and why closing a socket
+with a pending `select()` completes the request with `STATUS_CANCELLED`.
+
+### Q: What is `TransmitFile` doing that `send()` cannot?
+
+`TransmitFile` (`IOCTL_AFD_TRANSMIT_FILE`) sends a file's data directly from the cache without
+copying it into user buffers, and can prepend/append a small user buffer and a trailer. The
+kernel-side path is `net/sockets/winsock2/wsp/afdsys` plus the TDI fast path. It is
+only meaningful for a **connected** socket, and only when the file is cached.
+
+### Q: Where does `netstat` get its information?
+
+`net/tdi`'s `TDI_QUERY_INFORMATION` with `TDI_QUERY_ADDRESS_INFO`/`TDI_QUERY_CONNECTION_INFO` is
+the kernel path; the user-mode consumer is `net/sockets/winsock2` and the `iphlpapi`/`netstat` tools. The
+TCP/IP driver's device objects (`\Device\Tcp`, `\Device\Udp`) expose the same information through
+IOCTLs that `GetTcpTable`/`GetUdpTable` use.
+
+### Q: Why is my NDIS miniport's interrupt handler running at the wrong IRQL?
+
+`MiniportISR` runs at the adapter's `SynchronIRQL` and must only acknowledge the interrupt and
+defer work. `MiniportHandleInterrupt` runs at `DISPATCH_LEVEL` via a DPC and does the real work. If
+you call NDIS functions from `MiniportISR` that may only be called at `DISPATCH_LEVEL`, you lower
+the IRQL illegally. Keep `MiniportISR` to `NdisMSynchronizeWithInterrupt`-safe operations.
+
+### Q: What is `NdisMedium` and why does it matter?
+
+`NdisMedium` is the media type the adapter claims (`NdisMedium802_3`, `NdisMedium802_5`,
+`NdisMediumFddi`, `NdisMediumAtm`, `NdisMediumWan`, `NdisMediumLocalTalk`, ...). The protocol above
+uses it to decide how to parse the frame. Reporting the wrong medium is a classic 802.11 miniport
+bug: the adapter claims 802.3 but delivers 802.11 frames, so the protocol mis-parses every packet.
+
+### Q: Is there a loopback adapter in this tree?
+
+Yes. `net/ndis/loopback` implements the loopback miniport (MSLOOP), and `net/ndis/config` has the
+`netcfg` components for installing it. It is a real NDIS miniport that short-circuits sends back to
+receives, which makes it useful for testing protocol stacks without hardware.

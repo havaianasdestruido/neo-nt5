@@ -183,6 +183,128 @@ WindowTitle=Windows NT Server Setup -- Installing DNS Server
 That one delegates to a network optional-component DLL. Driver INFs are larger and carry
 `[Manufacturer]`, `[SourceDisksFiles]` and `[DestinationDirs]` sections.
 
+## The cache manager and fast I/O
+
+Two caches sit in front of the disk. The **system cache** (`base/ntos/cache`) maps file data through
+sections; the **filesystem metadata cache** is the FSD's own (the NTFS log and the FAT directory
+cache). `CcInitializeCacheMap` attaches a file object to the cache, and from then on a read that
+hits the cache is satisfied by a memory copy rather than an IRP to the disk.
+
+| Cache manager routine | Purpose |
+| --- | --- |
+| `CcInitializeCacheMap` | Attach a file object to the cache |
+| `CcPinRead` / `CcPinWrite` | Pin pages in memory for direct modification |
+| `CcPreparePinWrite` | Prepare a pinned write (copy-on-write handling) |
+| `CcMapData` | Map a range read-only |
+| `CcUnpinData` | Release pinned pages |
+| `CcFlushCache` | Write dirty pages to the FSD |
+| `CcPurgeCacheSection` | Drop a range from the cache |
+| `CcSetFileSizes` | Tell the cache about truncate/extend |
+| `CcIsFileCached` | Is any of the range resident? |
+
+The **fast I/O** path bypasses IRPs entirely for cached reads and writes. The driver object's
+`FastIoDispatch` table carries `FastIoRead`, `FastIoWrite`, `FastIoQueryBasicInfo`,
+`FastIoQueryStandardInfo` and `AcquireFileForNtCreateSection`. `base/ntos/fsrtl/fastio.c` holds the
+shared default implementations a filesystem can copy into its own dispatch table.
+
+```text
+NtReadFile
+  -> IoPageRead / NtReadFile -> IofCallDriver        (IRP path)
+  -> FsRtlCopyRead                                  (fast I/O path)
+       -> CcCopyRead -> memcpy out of the cache
+       -> on a miss, CcWaitForCurrentLazyWriterActivity and build an IRP
+```
+
+A driver that supplies fast I/O must keep it consistent with its IRP path, or the same read returns
+different data depending on whether the cache is warm. The classic bug is a fast I/O routine that
+does not update the file pointer while the IRP path does.
+
+## Oplocks and locking
+
+| Operation | Mechanism |
+| --- | --- |
+| Byte-range lock | `IRP_MJ_LOCK_CONTROL` / `FSCTL_LOCK_VOLUME`; `FileLock` in the FSD |
+| Opportunistic lock | `FSCTL_REQUEST_OPLOCK_LEVEL_1`/`_2`, `FSCTL_OPLOCK_BREAK_ACKNOWLEDGE` |
+| Batch oplock | `FSCTL_REQUEST_BATCH_OPLOCK` |
+| Filter oplock | `FSCTL_REQUEST_FILTER_OPLOCK` |
+| Directory change notification | `IRP_MJ_DIRECTORY_CONTROL` with `IRP_MN_NOTIFY_CHANGE_DIRECTORY` |
+
+An oplock is granted to the first opener of a file on a redirected (SMB) share. It lets the client
+cache aggressively; when a second opener arrives, the server **breaks** the oplock, and the client
+must acknowledge before the second open proceeds. `base/fs/ntfs` and `base/fs/fastfat` implement the
+local break; `base/fs/rdr2` (the SMB redirector) implements the client side. A stale oplock causes
+the notorious "file in use" message that no process seems to own.
+
+## Volume management and mount
+
+The volume stack is layered:
+
+```text
+IoCreateFile(\??\C:\path)
+   -> ObpLookupObjectName -> \??\C: symbolic link -> \Device\HarddiskVolume1
+      -> IoGetDeviceObjectPointer -> the volume device object
+         -> IoGetDeviceVerifier... -> the volume's VPB -> the filesystem's device object
+            -> IRP to the filesystem
+```
+
+| Layer | Directory | Role |
+| --- | --- | --- |
+| Volume manager | `drivers/inc/volmgr.h` (headers only) | Creates `\Device\HarddiskVolumeN`, assigns drive letters, mount points |
+| Mount manager | `drivers/filters/mountmgr` | Database of volume GUIDs to mount points |
+| Partition manager | `drivers/storage/partmgr` | Reads partition tables, creates volume PDOs |
+| Fault-tolerant disk | `drivers/storage/newft` | FT volume sets and stripes (ftdisk) |
+| Volume snapshot | `drivers/storage/volsnap` | Shadow-copy volume driver |
+| Filesystem recognizer | `base/fsrec` | Probes an unmounted volume for a known FS and loads it |
+| NTFS | `base/fs/ntfs` | The filesystem itself |
+| Fastfat | `base/fs/fastfat` | FAT12/16/32 |
+| CDFS/UDFS | `base/fs/cdfs`, `base/fs/udfs` | Optical media |
+
+:::note
+The volume manager itself is **not** present as a source directory in this checkout: only its
+headers (`drivers/inc/volmgr.h`, `drivers/inc/volmgrx.h`) and the disktracker client
+(`com/svcdlls/trksvcs/trkwks/volmgr.cxx`) are. `volmgr.sys` is a binary-only component here, so a
+change to volume naming cannot be made from this tree. That is a genuine gap, not an omission in
+this page.
+:::
+
+A filesystem registers with `IoRegisterFileSystem`. The recognizer then calls it when a volume
+arrives. If no filesystem claims the volume, the mount fails with `STATUS_UNRECOGNIZED_VOLUME`, which
+Win32 reports as `ERROR_UNRECOGNIZED_VOLUME` / "The volume does not contain a recognized file system."
+
+A filesystem registers with `IoRegisterFileSystem`. The recognizer then calls it when a volume
+arrives. If no filesystem claims the volume, the mount fails with `STATUS_UNRECOGNIZED_VOLUME`, which
+Win32 reports as `ERROR_UNRECOGNIZED_VOLUME` / "The volume does not contain a recognized file system."
+
+## IOCTL and the device-control contract
+
+An IOCTL code is built with `CTL_CODE`:
+
+```c
+#define IOCTL_DISK_GET_DRIVE_GEOMETRY \
+    CTL_CODE(IOCTL_DISK_BASE, 0x0000, METHOD_BUFFERED, FILE_ANY_ACCESS)
+```
+
+| Field | Bits | Meaning |
+| --- | --- | --- |
+| Device type | 16–31 | `FILE_DEVICE_DISK`, `FILE_DEVICE_FILE_SYSTEM`, ... |
+| Access | 14–15 | `FILE_ANY_ACCESS`, `FILE_READ_ACCESS`, `FILE_WRITE_ACCESS`, `FILE_READ_ACCESS|FILE_WRITE_ACCESS` |
+| Function | 2–13 | The driver's function number; `0x800`+ are vendor-defined |
+| Method | 0–1 | `METHOD_BUFFERED`, `METHOD_IN_DIRECT`, `METHOD_OUT_DIRECT`, `METHOD_NEITHER` |
+
+The method determines who copies the buffers and whether `Irp->AssociatedIrp.SystemBuffer` or the
+MDL is used:
+
+| Method | Input | Output | Driver must |
+| --- | --- | --- | --- |
+| `METHOD_BUFFERED` | `SystemBuffer` | `SystemBuffer` | Set `IoStatus.Information` and `Information` |
+| `METHOD_IN_DIRECT` | MDL | `SystemBuffer` | Probe/lock the input |
+| `METHOD_OUT_DIRECT` | `SystemBuffer` | MDL | Probe/lock the output |
+| `METHOD_NEITHER` | `Irp->UserBuffer` | `Irp->UserBuffer` | Probe everything, build MDLs yourself |
+
+`METHOD_NEITHER` is the only method where the driver must probe both buffers. It is also the source
+of most historical local privilege escalations. Prefer `METHOD_BUFFERED` unless a large transfer
+makes the double copy unacceptable.
+
 ## Frequently asked questions
 
 ### Q: Which layer produced this error status?
@@ -264,3 +386,71 @@ Only statically. The tree does contain kernel test scaffolding and samples — f
 [Tests, diagnostics and debugging](/testing-debugging) — but running them needs a target system. On
 this checkout the honest evidence is a source read, the build-definition chain, and
 `git diff --check`. Say which of those you did.
+
+### Q: Why does `IoCallDriver` return before the driver finishes?
+
+Because the I/O model is asynchronous. `IoCallDriver` queues the IRP to the next device object and
+returns immediately. The lower driver completes the IRP later, on its own thread, and
+`IoCompleteRequest` walks the completion routines you attached with `IoSetCompletionRoutine`. If you
+need to wait, use `KeWaitForSingleObject` on an event you set in the completion routine, or
+`IoBuildSynchronousFsdRequest`, which does that for you.
+
+### Q: What is a VPB and why does it matter?
+
+A Volume Parameter Block (`VPB`) links a volume device object to the filesystem device object that
+has mounted it. `IoGetDeviceObjectPointer` follows the VPB; a filesystem filter that wants to see
+all requests attaches above the filesystem, not above the volume. `ReferenceCount` in the VPB
+prevents the filesystem from unmounting while a file object is open.
+
+### Q: What does `IoAttachDeviceToDeviceStack` do that `IoAttachDevice` does not?
+
+`IoAttachDeviceToDeviceStack` attaches at the **top** of the existing stack and returns the device
+object it attached above, which is what a filter must store in its own device extension. It also
+propagates the `Characteristics`, `SectorSize`, `AlignmentRequirement` and `DeviceType` fields of the
+target, so the filter does not need to copy them by hand. `IoAttachDevice` attaches at the bottom
+and does not do that propagation — it is for drivers that replace the whole stack.
+
+### Q: How does a filesystem tell the cache manager a file grew?
+
+`CcSetFileSizes`. Forgetting it means the cache keeps stale beyond-EOF pages; the next read past the
+old size either returns zeros or faults. A truncate must also `CcPurgeCacheSection` the removed
+range, or a later read returns the truncated data from the cache.
+
+### Q: Why does `IoCompleteRequest` require `IoStatus.Status` to be set?
+
+Because the I/O manager copies `IoStatus.Status` into the caller's `IO_STATUS_BLOCK` and uses it to
+decide whether to transfer data. An IRP completed without a status is a bugcheck in a checked build
+and undefined behaviour in a free one. Set `Status` and `Information` **before** calling
+`IoCompleteRequest`; the IRP may be freed the moment the call returns.
+
+### Q: What is the difference between `IoBuildDeviceIoControlRequest` and allocating an IRP myself?
+
+`IoBuildDeviceIoControlRequest` builds a **synchronous** IRP on the caller's stack, sets up the
+system buffer or MDL for the transfer method, and returns an IRP that must be sent with
+`IoCallDriver` and freed with `IoFreeIrp` after the wait. `IoBuildAsynchronousFsdRequest` builds one
+that can be completed asynchronously. Allocating by hand (`IoAllocateIrp`) gives full control but
+means you must set `MajorFunction`, `FileObject`, `IoStatus`, the stack location, and the cancel and
+completion semantics yourself.
+
+### Q: Where are the IOCTL codes for storage defined?
+
+`public/sdk/inc/winioctl.h` (the published Win32 IOCTLs) and `public/sdk/inc/ntdddisk.h`,
+`ntddscsi.h`, `ntddstor.h`, `ntddcdrm.h` (the DDK-level storage IOCTLs). `public/ddk/inc/wdm.h`
+defines the `IO_STACK_LOCATION` fields they land in. A driver that defines a private IOCTL must use
+`FILE_DEVICE_UNKNOWN` (or its own type) and a function number at or above `0x800`.
+
+### Q: Why is my filesystem not being loaded for a volume?
+
+Three common reasons: the volume's boot sector is not recognized by `base/fs/fs_rec`, the filesystem
+is not registered with `IoRegisterFileSystem`, or the volume is marked `FILE_FLOPPY_DISKETTE`/removable
+and the recognizer skips it. Check `HKLM\SYSTEM\CurrentControlSet\Services\<fs>` for the driver's
+`Group` and `Start` values, and the ` SERVICE_FS_FILTER` ordering. Use `fsutil fsinfo drives` to see
+what the mount manager thinks exists.
+
+### Q: What is the difference between `IRP_MJ_READ` and `IRP_MJ_DEVICE_CONTROL` with
+`IOCTL_DISK_READ`?
+
+`IRP_MJ_READ` is a normal read through the filesystem; it is subject to caching, oplocks, byte-range
+locks and security checks. `IOCTL_DISK_READ` goes to the **disk class driver** and bypasses the
+filesystem entirely — it reads raw sectors, ignoring the mount. Raw access requires
+`SE_MANAGE_VOLUME_NAME` or an administrative token, and must be aligned to the sector size.

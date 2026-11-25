@@ -96,6 +96,80 @@ Two consequences worth repeating here:
 2. This site documents source behaviour. When it describes a function, it links to the definition
    rather than restating an inferred meaning.
 
+## The full wiki map
+
+The site now has two halves: **guides** that explain the tree, and **API reference** pages that
+document the callable surface with signatures, implementation points and official documentation
+links. Use this table to jump directly to a topic.
+
+### Guides
+
+| Page | Subject |
+| --- | --- |
+| [Project overview](/) | This page: what the checkout contains and how the site is assembled |
+| [Architecture and runtime boundaries](/architecture) | Boot chain, kernel/user boundary, Win32k, build variants |
+| [Build, package and release](/build) | Razzle, `dirs`/`sources`/`makefile`, postbuild, SKUs, checkout gaps |
+| [Kernel and executive](/kernel) | The `base/ntos` managers, system services, object and handle lifetimes |
+| [I/O, file systems and storage](/io-storage) | IRP lifecycle, file systems, class/port drivers, Plug and Play |
+| [Networking stack](/networking) | NDIS, TCP/IP, TDI, Winsock and AFD |
+| [Win32, windowing and the shell](/win32-shell) | Where Win32 is implemented, the window server, the shell |
+| [Security and directory services](/security-directory) | Access checks, tokens, auditing, LSA, Active Directory layers |
+| [Interfaces and cross-project contracts](/interfaces) | Public/published/private headers, IDL/RPC, MOF, INFs |
+| [Tests, diagnostics and debugging](/testing-debugging) | Test conventions, Driver Verifier, `gflags`, `kdext` extensions |
+| [Using the generated function index](/function-index) | How the generated index works and how to read it |
+| [Glossary](/glossary) | Every term and abbreviation used on the wiki |
+
+### Windows API reference
+
+| Page | API surface |
+| --- | --- |
+| [The Windows API surface](/windows-api) | DLL/header map, calling conventions, ANSI/Unicode, error model, tracing a call |
+| [File, directory, pipe and mailslot API](/kernel32-file-api) | `CreateFile`, `ReadFile`, `WriteFile`, enumeration, mappings, pipes, mailslots |
+| [Process, thread and synchronization API](/kernel32-process-api) | `CreateProcess`, `CreateThread`, TLS, waits, critical sections, events, mutexes, jobs |
+| [Memory management API](/kernel32-memory-api) | `VirtualAlloc`, heaps, page protection, cross-process memory |
+| [Library, loader, resource and diagnostics API](/kernel32-library-api) | `LoadLibrary`, `GetProcAddress`, resources, ToolHelp, `FormatMessage`, console gap |
+| [USER — windows, messages and input](/user32-api) | Window classes, message loop, dialogs, timers, hooks, clipboard |
+| [GDI — device contexts, drawing and bitmaps](/gdi32-api) | DCs, pens/brushes, bitmaps/DIBs, fonts/text, palettes, regions |
+| [ADVAPI32 — registry, services, event log, security and crypto](/advapi32-api) | `Reg*`, SCM, event log, tokens/privileges, CryptoAPI |
+| [NTDLL — the NT runtime library](/ntdll-api) | `Rtl*`, `Ldr*`, `Csr*`, activation contexts, VEH, error translation |
+| [NT native API — Nt*/Zw* system services](/native-api) | Syscall path, `services.tab`, core services by category, `Nt` vs `Zw` |
+| [Core structures and constants](/structures) | `UNICODE_STRING`, `OBJECT_ATTRIBUTES`, `IO_STATUS_BLOCK`, `OVERLAPPED`, constants |
+| [Status and error codes](/status-codes) | `NTSTATUS`, Win32 errors, `HRESULT`, conversion functions, bugcheck codes |
+| [Kernel driver model — WDM, IRPs and DDI](/driver-model) | `DriverEntry`, dispatch tables, IRP stack, PnP/power, DPC/ISR/DMA, NDIS |
+| [PE format and the loader](/pe-loader) | Headers, sections, imports/exports, relocations, TLS, `Ldr*` |
+| [Registry — structure, API and implementation](/registry) | Hives, cells, native services, `Reg*`, symbolic links, redirection |
+| [COM, RPC and OLE](/com-rpc) | `IUnknown`, class factories, marshalling, MIDL/IDL, NDR, structured storage |
+| [Winsock API — sockets, providers and AFD](/winsock-api) | The Winsock 2 API, SPI, AFD, `select`/overlapped models |
+| [Kernel objects and handles](/kernel-objects) | Object types, handle tables, reference counting, the object directory |
+
+### Reference generated from the tree
+
+| Page | Subject |
+| --- | --- |
+| [Generated function index](/reference/) | Every C/C++/Python definition, its signature and its test links |
+| [Extraction coverage](/reference/coverage) | Files that could not be parsed and why |
+
+## How to use the API reference
+
+Each API page follows the same shape:
+
+1. **A model** — the layering, so you know which DLL owns which call.
+2. **Function tables** — function, header, implementation file and line in this checkout, and a
+   link to the official Microsoft documentation.
+3. **Worked examples** — compilable C against the Windows SDK.
+4. **Internal path** — which `Nt*` service the call reaches, and where that service lives.
+5. **FAQ** — the mistakes that are actually made.
+
+Two conventions are used throughout:
+
+- **"Implementation"** means the file and line in *this checkout*, verified with `rg` against the
+  tree. It is a pointer, not a claim about every Windows release.
+- **"Documentation"** links to Microsoft Learn, which is the authority on parameter semantics,
+  minimum supported Windows version, header and import library.
+
+When the two disagree, the tree wins for *this checkout* and the documentation wins for the
+*published contract*. Say which one you are reasoning about.
+
 ## Frequently asked questions
 
 ### Q: Is this a working operating system I can build and install?
@@ -202,3 +276,36 @@ cd documentation/site && npm ci && npm run build
 `docusaurus.config.js` sets `onBrokenLinks: 'throw'`, so the build fails rather than shipping a
 dead link. That means `reference/index.md` must exist before `npm run build` — run the generator
 first, even with a narrow `--prefix`.
+
+### Q: Which API page should I read for a specific function?
+
+Start from the header that declares it. `fileapi.h` functions are on
+[File, directory, pipe and mailslot API](/kernel32-file-api); `processthreadsapi.h` and `synchapi.h`
+on [Process, thread and synchronization API](/kernel32-process-api); `memoryapi.h` on
+[Memory management API](/kernel32-memory-api); `libloaderapi.h` on
+[Library, loader, resource and diagnostics API](/kernel32-library-api); `winuser.h` on
+[USER](/user32-api); `wingdi.h` on [GDI](/gdi32-api); `winreg.h`, `winsvc.h`, `winbase.h` (event
+log) and `wincrypt.h` on [ADVAPI32](/advapi32-api); `winternl.h` on
+[NTDLL](/ntdll-api) and [Native API](/native-api).
+
+### Q: Do the API pages cover every function in the tree?
+
+No. They cover the documented Windows API surface that this checkout implements, grouped by header
+family. The **generated function index** covers every C/C++/Python definition the parser can find,
+including internal helpers that have no public documentation. The two are complementary: the API
+pages explain the contract, the index locates the code.
+
+### Q: Why do the API pages link to Microsoft Learn instead of copying the documentation?
+
+Because the official pages are the authority on parameter semantics, supported versions and
+header/import-library requirements, and they are updated when the contract changes. This wiki
+adds what the official docs do not have: the implementation path in this checkout, the internal
+`Nt*` service, and the specific mistakes the source makes visible. Quoting short signatures is
+fair; duplicating whole articles would go stale and misattribute the text.
+
+### Q: Is the console API documented here?
+
+Partly. The exports are listed in `base/win32/client/kernel32.src`, but the implementations are not
+present in `base/win32/client` in this checkout. The
+[Library, loader, resource and diagnostics API](/kernel32-library-api#console) page states that
+explicitly rather than inventing an implementation path.

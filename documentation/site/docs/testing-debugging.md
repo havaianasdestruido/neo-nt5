@@ -119,6 +119,142 @@ windows/core/ntuser/kdexts        windows/core/ntgdi/kdexts2
 was revised across releases. When you change a data structure that an extension prints, the extension
 is part of the change.
 
+## Driver Verifier in detail
+
+Verifier is not a single check. It is a set of **I/O verifier** and **DDI compliance** rules that the
+kernel routes through, plus a set of **special pools**. The `gflags` / Driver Verifier Manager
+settings are per-driver; the kernel reads them at driver load.
+
+| Setting | What it turns on |
+| --- | --- |
+| Special pool | Allocate from a pool with guard pages, so overruns and use-after-free crash immediately |
+| Force IRQL checking | Fail if a driver calls a function at the wrong IRQL |
+| Pool tracking | Track every allocation by tag, so `!poolused` and the leak dumps are accurate |
+| I/O verification | Route IRPs through the verifier and check `IoCallDriver`/`IoCompleteRequest` pairing |
+| Deadlock detection | Build the lock-order graph and detect cycles (`vfdeadlock.c`) |
+| DMA verification | Check map-register usage and buffer ownership |
+| Security checks | Verify `IoCreateDeviceSecure` and device-naming rules |
+| Misc checks | `IoDeleteDevice` on a device with outstanding references, `IoCompleteRequest` on an IRP twice |
+| Force pending I/O | Randomly return `STATUS_PENDING` so the driver's async path is exercised |
+| IRP logging | Record the last N IRPs for the driver |
+| Disk integrity verification | Read back every write and compare (very slow) |
+
+The verifier's IRP tracking database lives in `base/ntos/verifier/vfirpdb.c`; `vfirp.c` wraps
+`IoCallDriver`/`IoCompleteRequest` to keep it consistent. When a verifier rule fires, it calls
+`VfBugcheck` with a verifier-specific code; the `vfbugcheck.c` table maps code to bugcheck argument.
+
+| Bugcheck | Meaning |
+| --- | --- |
+| `0xC4` (`DRIVER_VERIFIER_DETECTED_VIOLATION`) | A DDI compliance rule fired |
+| `0xC9` (`DRIVER_VERIFIER_IOMANAGER_VIOLATION`) | An I/O manager rule fired |
+| `0xC6` (`DRIVER_CAUGHT_MODIFYING_FREED_POOL`) | Special pool detected a write to freed memory |
+| `0xCC` (`PAGE_FAULT_IN_FREED_SPECIAL_POOL`) | Access to freed special pool |
+| `0xD6` (`PAGE_FAULT_BEYOND_END_OF_ALLOCATION`) | Overrun of a special-pool allocation |
+
+### Using `gflags`
+
+```bat
+:: Enable verifier for a driver, with special pool and IRQL checking
+gflags /r +sls          :: enable "Special Pool" globally (registry)
+verifier /flags 0x... /driver mydriver.sys
+verifier /query
+verifier /reset
+```
+
+The `gflags` UI exposes the same flags as the registry:
+`HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\GlobalFlag` and
+`...\Memory Management\PoolTagOverrides`. The `sdktools/gflags` sources are the tool; the kernel
+side is `base/ntos/verifier/vfsettings.c`, which reads them.
+
+### Application Verifier
+
+The user-mode counterpart is `sdktools/appverif` (the UI) and the `avrf` runtime, with the client
+side in `base/ntdll/avrfp.h`. It uses the same idea — instrument the heap and the API — but for
+user-mode bugs: heap overruns, handle misuse, `LoadLibrary` errors, `GetProcAddress` misuse, and
+locking violations.
+
+| Fix | What it catches |
+| --- | --- |
+| Heaps | Overruns, underruns, use-after-free, double-free |
+| Handles | Invalid handle use, handle leaks |
+| Locks | `InitializeCriticalSection` on an already-initialised CS, thread termination holding a lock |
+| Memory | `VirtualAlloc`/`VirtualFree` pairing, `IsBadReadPtr` misuse |
+| Timers | Timer callback leaks |
+| `LoadLibrary` | Load failures, incorrect `GetModuleHandle` |
+| Threats | Simulated low-memory and low-resource conditions |
+
+## Debugging techniques
+
+### Reading a crash dump
+
+```text
+kd -z dump.dmp
+> !analyze -v          the first command on any dump
+> .bugcheck            the stop code and arguments
+> kv                   the faulting stack
+> !irp <addr>          the IRP that was in flight
+> !devobj <addr>       the device object
+> !drvobj <addr> 2     the driver object and its dispatch table
+> !poolused 2          pool by tag, sorted
+> !vm                  memory state
+> !locks               held locks and owners
+> !stacks 2            all kernel stacks
+```
+
+The four bugcheck arguments are the key: for `0xC4` (verifier), argument 2 is the specific rule.
+Look it up in `vfbugcheck.c` before guessing.
+
+### Debugging a hang
+
+For a hang rather than a crash, use a **live** kernel debug or a user dump:
+
+```text
+> !locks               who owns what, and who is waiting
+> !stacks 2            all threads and their stacks
+> !ready               the ready queue
+> !running             what is running
+> !thread <addr>       a specific thread
+> dt nt!EPROCESS <addr>   process fields
+> dt nt!ETHREAD <addr>   thread fields
+```
+
+`!locks` prints the `ERESOURCE`/`KMUTANT` trees with owners and waiters, which is usually enough to
+see the cycle. `!stacks 2` gives the full picture across all processors.
+
+### Debugging a memory leak
+
+```text
+> !poolused 2          sort by tag; look for a growing tag
+> !pool <addr>         find the allocation around a suspicious address
+> !address <addr>      what is at that address, and which region
+> !vm                  commit charge and page file use
+> !heap -l             leaked blocks in the user-mode heap (from a user dump)
+```
+
+Pool tags are the whole game. `ExAllocatePoolWithTag(..., 'xxxx')` makes a leak visible in
+`!poolused`; a tag of 0 or `'None'` makes it invisible.
+
+### ETW tracing
+
+Event Tracing for Windows is the system-wide tracing mechanism. A provider registers with
+`EventRegister`, writes events with `EventWrite`, and a controller starts a session with
+`StartTrace`/`EnableTraceEx2`. The kernel has built-in providers (`NT Kernel Logger`), and the
+tree carries per-provider MOF files that describe the event schema.
+
+```text
+tracelog.exe -start MySession -f c:\trace.etl -guid #<provider-guid> -flag 0xFFFF
+tracelog.exe -stop MySession
+tracefmt.exe c:\trace.etl -o c:\trace.txt
+tracerpt.exe c:\trace.etl -o c:\report.html -of html
+```
+
+The tools are in `sdktools/trace` (`logman`, `relog`, `tracectr`, `evntrprv`) plus
+`sdktools/perfmon`/`perfmtr`. The kernel-side trace plumbing that *is* in this checkout is
+`base/ntos/wmi/traceapi.c` (`WmiTraceMessage` at 1869, `WmiTraceMessageVa` at 1911) and
+`base/ntos/wmi/traceapi.c`'s logger management — the WPP/`WMI` trace path. The user-mode ETW
+registration API (`EtwRegister`/`EtwWrite`) is **not** present as a source directory in this
+checkout; do not cite one.
+
 ## Frequently asked questions
 
 ### Q: How do I find every test that touches the code I changed?
@@ -212,3 +348,71 @@ The working guide's table, applied strictly:
 
 A grep result, a successful catalog regeneration, or the existence of a `sources` file is **not** a
 runtime test. Report what you ran, in what environment, and what you could not test.
+
+### Q: What does `!analyze -v` actually do?
+
+It runs a heuristic analysis of the dump: it identifies the bugcheck, decodes the four arguments,
+finds the faulting stack, maps every frame to a symbol, and then searches a database of known
+patterns. Its conclusion is a **starting hypothesis**, not a proof — "Probably caused by" is the
+word the tool itself uses. Confirm by reading the stack and the IRP/lock state yourself.
+
+### Q: Why is my driver's bugcheck argument 2 a number I cannot find?
+
+Because the verifier's rule codes live in `base/ntos/verifier/vfbugcheck.c`, not in a public
+header. The mapping from code to description is that file. Grep the number in
+`base/ntos/verifier` to find the rule that fired.
+
+### Q: How do I get a dump of a hang without a debugger attached?
+
+Use a keyboard-initiated crash: enable the `CrashOnCtrlScroll` registry value under
+`HKLM\SYSTEM\CurrentControlSet\Services\i8042prt\Parameters` (or `kbdhid`), then press
+Right-Ctrl + Scroll Lock twice. The kernel bugchecks with `0xE2` (`MANUALLY_INITIATED_CRASH`) and
+writes a dump. `sdktools/crash` has the tooling that configures it.
+
+### Q: What is the difference between a kernel dump and a minidump?
+
+A **complete/kernel dump** contains all of physical memory (kernel) or a subset; a **minidump**
+contains the stacks, the loaded module list, the thread list and the faulting context. Minidumps are
+small and portable but cannot answer questions about arbitrary memory. `sdktools/debuggers/minidump`
+and `dumpchk` validate them.
+
+### Q: How do I find which driver leaked pool?
+
+Enable pool tracking, reproduce the leak, then `!poolused 2` sorted by tag. The growing tag is the
+culprit; `!pool <addr>` finds the allocation around a suspect address, and the tag's four characters
+tell you which component allocated it. If the tag is 0 or `'None'`, you have to bisect by disabling
+drivers.
+
+### Q: Can Driver Verifier be enabled for a driver that is already loaded?
+
+No. Verifier's settings are read when the driver loads, so you must enable them, then reboot (or
+reload the driver). `verifier /standard /driver mydriver.sys` followed by a reboot is the normal
+sequence. Applying it to a boot-start driver can make the system unbootable if the driver fails the
+checks — enable one driver at a time.
+
+### Q: What is `gflags` doing that the registry does not?
+
+Nothing, functionally — `gflags` is the UI over the `GlobalFlag` value and the
+`VerifierDrivers`/`VerifyDriverLevel` values. What it adds is the list of friendly names for the
+flags. The actual enforcement is in `base/ntos/verifier/vfsettings.c` and the heap's flag checks.
+
+### Q: Why does my `!irp` show `IRP_CANCELLED` when nothing cancelled it?
+
+Because the IRP was completed and freed, and the memory was reused — `!irp` is reading stale data.
+The IRP tracking database (`vfirpdb.c`) keeps the real history if IRP logging is enabled. Enable
+"IRP Logging" in Verifier and use `!irpfind`/`!verifier 3` to read the log instead of the freed IRP.
+
+### Q: How do I trace a `STATUS_ACCESS_DENIED` from a kernel service?
+
+First determine the caller's token and the object's DACL, then check the access mask. In the
+debugger: `!token <addr>` and `dt nt!SECURITY_DESCRIPTOR`. The kernel's decision is in
+`SeAccessCheck` (`base/ntos/se/accessck.c`); a quick way to confirm is to enable the "Audit Object
+Access" policy and read the failure audit record in the event log, which names the right that was
+missing.
+
+### Q: Where do I add a test for a new kernel path?
+
+Under the component's own test directory, following the `ut*.c` convention the index already
+recognises — `base/ntos/se/utaccess.c` is the canonical example. Name it `ut<subject>.c`, give it
+its own `sources` with `TARGETTYPE=PROGRAM`, and link against the same libraries the component
+uses. A test that is not in the tree is not a test the index or the build can see.
