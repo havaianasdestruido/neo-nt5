@@ -10,6 +10,13 @@ from the tracked files in this repository. It is a **syntactic inventory**: a li
 their signatures as written, and where they are called in test-named files. It is not proof of
 behaviour, coverage or equivalence.
 
+The generated pages are plain **static HTML**, written to `site/static/reference/` and copied
+verbatim into the published site. They are deliberately *not* Docusaurus documents: the full index
+holds over a million definitions, and pushing that volume through Docusaurus's webpack build
+exhausts Node's heap (the build dies with `JavaScript heap out of memory`). As static files they
+cost the build nothing, so the guide pages above build in seconds. The navbar and the guide pages
+link to them with ordinary URLs, which Docusaurus does not validate as routes.
+
 ## What the generator does
 
 ```text
@@ -22,7 +29,7 @@ tree-sitter (C grammar for .c, C++ grammar for headers/C++)  +  Python ast
         v
 SQLite (temporary) -> bucket by top-level tree -> pages of <= 300 entries
         v
-reference/index.md, reference/<tree>-NNNN.md, reference/coverage.md
+reference/index.html, reference/<tree>-NNNN.html, reference/coverage.html   (static HTML)
 ```
 
 The extension map is explicit:
@@ -47,37 +54,40 @@ definitions with 40 partial parses — a useful sense of the parse-error rate in
 
 ## The three kinds of page
 
-| Page | `sidebar_position` | Contents |
-| --- | --- | --- |
-| `reference/index.md` | 90 | Run summary, totals, links to every bucket page |
-| `reference/<tree>-NNNN.md` | 91 | Up to 300 entries for one top-level tree |
-| `reference/coverage.md` | 92 | Files with parse errors and files that could not be parsed |
+| Page | Contents |
+| --- | --- |
+| `reference/index.html` | Run summary, totals, links to every bucket page |
+| `reference/<tree>-NNNN.html` | Up to 300 entries for one top-level tree |
+| `reference/coverage.html` | Files with parse errors and files that could not be parsed |
 
-Filenames are stable for a given tree and ordering, so `base-0001` is the first page of the `base`
-tree on every regeneration. The hand-written guide pages occupy positions 1–11, which keeps the two
-kinds of page in separate groups in the sidebar.
+Filenames are stable for a given tree and ordering, so `base-0001.html` is the first page of the
+`base` tree on every regeneration. Because these pages are static files rather than Docusaurus
+documents, they do not appear in the sidebar; the navbar's **Function index** item and the links
+from the guide pages are how readers reach them.
 
-Generated pages are **not committed**. `documentation/.gitignore` excludes `site/docs/reference/`,
-and the generator deletes the Markdown files in its output directory before writing:
+Generated pages are **not committed**. `documentation/.gitignore` excludes `site/static/reference/`,
+and the generator deletes the HTML files in its output directory before writing:
 
 ```python
-# No stale pages on a regeneration. Only remove our own generated Markdown.
-for old in output.glob('*.md'):
+# No stale pages on a regeneration. Only remove our own generated HTML.
+for old in output.glob('*.html'):
     old.unlink()
 ```
 
 ## Anatomy of an entry
 
-A real entry, from a run over `base/ntos/se/`:
+A real entry, from a run over `base/ntos/se/` (shown as the HTML the generator writes):
 
-```markdown
-## ` SepDumpToken `
-
-- Source: [` base/ntos/se/token.c `:1862](https://github.com/.../base/ntos/se/token.c#L1862)
-- Signature: ` VOID SepDumpToken( IN PTOKEN T ) `
-- Implementation: inspect the linked definition and body; this index does not infer runtime behavior.
-- Variants: No other extracted definition with this exact name.
-- Test evidence: No matching call found in test-named files.
+```html
+<h2><code>SepDumpToken</code></h2>
+<ul>
+  <li>Source: <a href="https://github.com/.../base/ntos/se/token.c#L1862">
+      <code>base/ntos/se/token.c</code>:1862</a></li>
+  <li>Signature: <code>VOID SepDumpToken( IN PTOKEN T )</code></li>
+  <li>Implementation: inspect the linked definition and body; this index does not infer runtime behavior.</li>
+  <li>Variants: No other extracted definition with this exact name.</li>
+  <li>Test evidence: No matching call found in test-named files.</li>
+</ul>
 ```
 
 Each line means exactly what it says, and no more:
@@ -147,24 +157,24 @@ component's test directory.
 
 ## Querying the index
 
-The generated pages are Markdown, so the whole index is greppable. Some useful queries:
+The generated pages are HTML, so the whole index is greppable. Some useful queries:
 
 ```bash
 # Every definition in a bucket
-rg -l '^## ' documentation/site/docs/reference/memory-*.md
+rg -l '<h2><code>' documentation/site/static/reference/memory-*.html
 
 # Find a symbol across all buckets
-rg -n '^## RtlAllocateHeap' documentation/site/docs/reference/
+rg -n '<h2><code>RtlAllocateHeap</code>' documentation/site/static/reference/
 
 # Which files define symbols in a given bucket, sorted
-rg -h '^\`base/' documentation/site/docs/reference/memory-*.md | sort | uniq -c | sort -rn
+rg -h '<code>base/' documentation/site/static/reference/memory-*.html | sort | uniq -c | sort -rn
 
 # Every symbol whose definition sits in base/ntos/rtl
-rg -n '^## ' -A1 documentation/site/docs/reference/*.md | grep -B1 'base/ntos/rtl'
+rg -n '<h2><code>' -A1 documentation/site/static/reference/*.html | grep -B1 'base/ntos/rtl'
 ```
 
 Because the index is regenerated from the tree, it cannot go stale relative to the code — but it
-can go stale relative to the **build** if the generator's parser misses a file. `reference/coverage.md`
+can go stale relative to the **build** if the generator's parser misses a file. `reference/coverage.html`
 lists the files it could not parse, which is the honest answer to "why is my function missing?".
 
 ## The generator's own tests
@@ -179,9 +189,9 @@ lists the files it could not parse, which is the honest answer to "why is my fun
 | `test_test_path_detection` | Test-file path detection matches the documented heuristic |
 | `test_generation_writes_test_evidence` | Generated pages carry test evidence |
 | `test_generation_cleans_stale_pages` | A regeneration removes pages that no longer have symbols |
-| `test_every_page_carries_a_faq` | Every generated page has a `## Frequently asked questions` section |
+| `test_every_page_carries_a_faq` | Every generated page has a `Frequently asked questions` section |
 | `test_page_faq_is_built_from_that_page` | The FAQ is built from **that page's** symbols, not a global list |
-| `test_faq_snippet_cannot_break_the_code_fence` | A FAQ snippet cannot close or unbalance a code fence |
+| `test_faq_snippet_cannot_break_the_code_block` | A FAQ snippet cannot break out of its HTML code block |
 
 Run them with:
 
@@ -189,7 +199,7 @@ Run them with:
 /tmp/venv/bin/python -m unittest discover -s documentation/tests
 ```
 
-or, after `npm ci`, as part of the documentation CI job (`.github/workflows/docs.yml`), which runs
+or, after `npm ci`, as part of the documentation CI job (`.github/workflows/documentation.yml`), which runs
 the unittests, the generator, and `npm run build` in that order.
 
 ## Regenerating
@@ -201,10 +211,10 @@ python3 documentation/scripts/generate.py --prefix base/ntos
 | Flag | Meaning |
 | --- | --- |
 | `--prefix DIR` | Only index tracked paths with this prefix (repeatable; useful for development) |
-| `--output DIR` | Output directory (default `documentation/site/docs/reference`) |
+| `--output DIR` | Output directory (default `documentation/site/static/reference`) |
 | `--revision SHA` | The revision stamped into the pages; defaults to `$GITHUB_SHA` |
 
-The generator writes `index.md`, `coverage.md` and `<bucket>-NNNN.md`. It does **not** touch any
+The generator writes `index.html`, `coverage.html` and `<bucket>-NNNN.html`. It does **not** touch any
 hand-written page, so the two halves of the site never collide.
 
 ## Frequently asked questions
@@ -222,7 +232,7 @@ path.startswith(('documentation/', 'agents/'))             # True -> skipped
 # a macro-generated function may not parse as one either
 ```
 
-Check the [coverage report](/reference/coverage) first: if the file is listed there, it was attempted
+Check the <a href="reference/coverage.html">coverage report</a> first: if the file is listed there, it was attempted
 and partly failed. If it is absent from both the index and the coverage report, it was never
 eligible.
 
@@ -256,7 +266,7 @@ Different hashes indicate text differences, not necessarily different behavior.
 ### Q: Why are there so many pages for one tree?
 
 Because a tree like `base` has tens of thousands of definitions, and one page per 300 entries keeps
-each file openable. `base-0001.md`, `base-0002.md`, … are ordered by path and line, so a given
+each file openable. `base-0001.html`, `base-0002.html`, … are ordered by path and line, so a given
 definition stays on the same page number until the tree changes above it.
 
 ### Q: How do I regenerate just the part I am working on?
@@ -274,7 +284,7 @@ Do **not** publish a prefix-limited run as the full reference — it silently om
 
 ```sh
 python3 documentation/scripts/generate.py --revision $(git rev-parse HEAD) \
-    --output documentation/site/docs/reference
+    --output documentation/site/static/reference
 ```
 
 ### Q: Why do source links not show my local edits?
@@ -293,8 +303,8 @@ python3 -m unittest discover -s documentation/tests
 ```
 
 The suite covers C and Python extraction, body-hash sensitivity, the test-path rule, test-evidence
-rendering, stale-page cleanup, and the per-page FAQ — including that a backtick inside a captured
-signature cannot terminate the fenced code block early.
+rendering, stale-page cleanup, and the per-page FAQ — including that HTML metacharacters inside a captured
+signature cannot break out of the code block.
 
 ### Q: What would make this index better, and what is deliberately left out?
 
@@ -306,7 +316,7 @@ legible — which is what the per-page FAQ, the `Variants` wording and the cover
 ### Q: Does the index cover every function in the tree?
 
 No, and it says so. It covers files the parser can reach under the paths you pass, and it lists the
-ones it could not parse in `reference/coverage.md`. Coverage is a property of the run, not of the
+ones it could not parse in `reference/coverage.html`. Coverage is a property of the run, not of the
 tree: a `--prefix` run indexes only that subtree, which is why a development run must not be
 mistaken for a complete one.
 
@@ -324,16 +334,16 @@ without any symbol moving.
 
 ### Q: Can I link to a symbol in the index from another page?
 
-Yes, but the heading must match exactly. The generator's heading is `## <Symbol>`, so the anchor is
-`#<symbol>` after Docusaurus slugifies it. Because the index is regenerated, a symbol rename breaks
-the link — and `onBrokenAnchors: 'throw'` turns that into a build failure rather than a silent
-404.
+Link to the bucket page, not to the symbol. The generated pages are static HTML without per-entry
+anchors, so a link names the page (`reference/base-0001.html`) and the reader finds the entry on
+it. Because the index is regenerated, a symbol can move to another page when the tree changes above
+it — the stable handle is the source link inside the entry, not a fragment.
 
 ### Q: How do I know whether a page in `reference/` is stale?
 
-Check its `revision` stamp against `git rev-parse HEAD`. The generator writes the revision into the
-front matter; a page stamped with an older revision was generated from a different tree and should
-be regenerated, not edited.
+Check its `Source revision` line against `git rev-parse HEAD`. The generator writes the revision
+into the page body; a page stamped with an older revision was generated from a different tree and
+should be regenerated, not edited.
 
 ### Q: Should I edit a page in `reference/`?
 
@@ -343,7 +353,7 @@ in `reference/`.
 
 ### Q: What do I do if a function I expected is missing?
 
-Check `reference/coverage.md` first — it lists unparsed files. If the file parsed, check whether the
+Check `reference/coverage.html` first — it lists unparsed files. If the file parsed, check whether the
 symbol is a definition the parser recognises (a file-scope `Name(` in C, a `def`/`async def` in
 Python). If the symbol is a forwarder (a `.def`/`.src` `= NTDLL.RtlXxx` entry) there is no
 definition in the tree, so the index is right that it is absent — look it up on

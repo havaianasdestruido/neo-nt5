@@ -51,7 +51,7 @@ Two different kinds of page live here, and they are produced by different mechan
 | **Guide pages** (this page and the ones linked below) | Markdown checked into `documentation/site/docs/` | Yes |
 | **Function index pages** under `reference/` | `documentation/scripts/generate.py`, run by the Pages workflow | No — they are regenerated on every publish and old generated files are deleted first |
 
-The generated pages are *not committed*. `.gitignore` excludes `site/docs/reference/`, so a local
+The generated pages are *not committed*. `.gitignore` excludes `site/static/reference/`, so a local
 `git status` stays clean after you run the generator. See
 [Using the generated function index](/function-index) for exactly what those pages do and do not
 tell you.
@@ -146,8 +146,8 @@ links. Use this table to jump directly to a topic.
 
 | Page | Subject |
 | --- | --- |
-| [Generated function index](/reference/) | Every C/C++/Python definition, its signature and its test links |
-| [Extraction coverage](/reference/coverage) | Files that could not be parsed and why |
+| <a href="reference/">Generated function index</a> | Every C/C++/Python definition, its signature and its test links |
+| <a href="reference/coverage.html">Extraction coverage</a> | Files that could not be parsed and why |
 
 ## How to use the API reference
 
@@ -273,9 +273,10 @@ python3 documentation/scripts/generate.py
 cd documentation/site && npm ci && npm run build
 ```
 
-`docusaurus.config.js` sets `onBrokenLinks: 'throw'`, so the build fails rather than shipping a
-dead link. That means `reference/index.md` must exist before `npm run build` — run the generator
-first, even with a narrow `--prefix`.
+The generated pages are static HTML copied verbatim into the build, so the Docusaurus build does
+not process them and does not fail if they are missing — the navbar and guide links to them are
+plain URLs. Run the generator before `npm run build` anyway, so the published site actually
+contains the index; a build without it ships a site whose **Function index** link leads nowhere.
 
 ### Q: Which API page should I read for a specific function?
 
