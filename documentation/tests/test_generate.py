@@ -50,18 +50,18 @@ class GeneratorTests(unittest.TestCase):
                 g.generate(out, ['src/foo.c', 'tests/test_foo.c'], 'abc')
             finally:
                 g.ROOT = original_root
-            text = ''.join(p.read_text() for p in sorted(out.glob('*.md')))
+            text = ''.join(p.read_text() for p in sorted(out.glob('*.html')))
             self.assertIn('Test evidence', text)
-            self.assertEqual(text.count('[test call]'), 2)  # both calls to foo
+            self.assertEqual(text.count('>test call</a>'), 2)  # both calls to foo
             self.assertIn('No matching call found', text)  # bar is never called
 
     def test_generation_cleans_stale_pages(self):
         with tempfile.TemporaryDirectory() as temp:
             out = Path(temp)
-            (out / 'stale.md').write_text('stale')
+            (out / 'stale.html').write_text('stale')
             g.generate(out, [], 'abc')
-            self.assertFalse((out / 'stale.md').exists())
-            self.assertIn('0 definitions', (out / 'index.md').read_text())
+            self.assertFalse((out / 'stale.html').exists())
+            self.assertIn('0 definitions', (out / 'index.html').read_text())
 
     def test_every_page_carries_a_faq(self):
         # The FAQ must be on the index, the coverage report and every bucket page,
@@ -79,10 +79,10 @@ class GeneratorTests(unittest.TestCase):
                 g.generate(out, ['src/foo.c', 'tests/test_foo.c'], 'abc')
             finally:
                 g.ROOT = original_root
-            written = sorted(out.glob('*.md'))
+            written = sorted(out.glob('*.html'))
             self.assertTrue(written)
             for page in written:
-                self.assertIn('## Frequently asked questions', page.read_text(), page.name)
+                self.assertIn('<h2>Frequently asked questions</h2>', page.read_text(), page.name)
 
     def test_page_faq_is_built_from_that_page(self):
         # Counts and the quoted signature must come from the page's own data.
@@ -97,16 +97,16 @@ class GeneratorTests(unittest.TestCase):
                 g.generate(out, ['src/foo.c'], 'abc')
             finally:
                 g.ROOT = original_root
-            text = (out / 'src-0001.md').read_text()
+            text = (out / 'src-0001.html').read_text()
             self.assertIn('lists 2 definitions', text)
             self.assertIn('int alpha(int x)', text)
             self.assertIn('2 of the 2 entries on this page are in that state', text)
 
-    def test_faq_snippet_cannot_break_the_code_fence(self):
-        # A backtick in a captured signature must not terminate the fenced block early.
-        block = g.code_block('int a`b(int x)')
-        self.assertEqual(block.count('```'), 2)
-        self.assertNotIn('`b', block)
+    def test_faq_snippet_cannot_break_the_code_block(self):
+        # HTML metacharacters in a captured signature must be escaped, not emitted raw.
+        block = g.code_block('int a<b(int x)')
+        self.assertIn('&lt;', block)
+        self.assertNotIn('<b', block)
 
 
 if __name__ == '__main__':

@@ -1,5 +1,5 @@
 site/node_modules/
 site/build/
 site/.docusaurus/
-site/docs/reference/
+site/static/reference/
 __pycache__/
